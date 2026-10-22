@@ -15,15 +15,12 @@ const originalFetch = globalThis.fetch
 const originalMacro = (globalThis as Record<string, unknown>).MACRO
 const originalEnv = {
   CLAUDE_CODE_USE_OPENAI: process.env.CLAUDE_CODE_USE_OPENAI,
-  CLAUDE_CODE_USE_GEMINI: process.env.CLAUDE_CODE_USE_GEMINI,
-  GEMINI_API_KEY: process.env.GEMINI_API_KEY,
-  GEMINI_MODEL: process.env.GEMINI_MODEL,
-  GEMINI_BASE_URL: process.env.GEMINI_BASE_URL,
-  GEMINI_AUTH_MODE: process.env.GEMINI_AUTH_MODE,
-  GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
+  OPENAI_API_BASE: process.env.OPENAI_API_BASE,
   OPENAI_MODEL: process.env.OPENAI_MODEL,
+  ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+  ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
   ANTHROPIC_CUSTOM_HEADERS: process.env.ANTHROPIC_CUSTOM_HEADERS,
@@ -39,17 +36,15 @@ function restoreEnv(key: string, value: string | undefined): void {
 
 beforeEach(() => {
   ;(globalThis as Record<string, unknown>).MACRO = { VERSION: 'test-version' }
-  process.env.CLAUDE_CODE_USE_GEMINI = '1'
-  process.env.GEMINI_API_KEY = 'gemini-test-key'
-  process.env.GEMINI_MODEL = 'gemini-2.0-flash'
-  process.env.GEMINI_BASE_URL = 'https://gemini.example/v1beta/openai'
-  process.env.GEMINI_AUTH_MODE = 'api-key'
 
+  // OpenClaude defaults to the OpenAI-compatible shim.
   delete process.env.CLAUDE_CODE_USE_OPENAI
-  delete process.env.GOOGLE_API_KEY
-  delete process.env.OPENAI_API_KEY
-  delete process.env.OPENAI_BASE_URL
-  delete process.env.OPENAI_MODEL
+  process.env.OPENAI_API_KEY = 'openai-test-key'
+  process.env.OPENAI_BASE_URL = 'http://example.test/v1'
+  process.env.OPENAI_MODEL = 'test-model'
+  delete process.env.OPENAI_API_BASE
+  delete process.env.ANTHROPIC_BASE_URL
+  delete process.env.ANTHROPIC_MODEL
   delete process.env.ANTHROPIC_API_KEY
   delete process.env.ANTHROPIC_AUTH_TOKEN
   delete process.env.ANTHROPIC_CUSTOM_HEADERS
@@ -58,22 +53,19 @@ beforeEach(() => {
 afterEach(() => {
   ;(globalThis as Record<string, unknown>).MACRO = originalMacro
   restoreEnv('CLAUDE_CODE_USE_OPENAI', originalEnv.CLAUDE_CODE_USE_OPENAI)
-  restoreEnv('CLAUDE_CODE_USE_GEMINI', originalEnv.CLAUDE_CODE_USE_GEMINI)
-  restoreEnv('GEMINI_API_KEY', originalEnv.GEMINI_API_KEY)
-  restoreEnv('GEMINI_MODEL', originalEnv.GEMINI_MODEL)
-  restoreEnv('GEMINI_BASE_URL', originalEnv.GEMINI_BASE_URL)
-  restoreEnv('GEMINI_AUTH_MODE', originalEnv.GEMINI_AUTH_MODE)
-  restoreEnv('GOOGLE_API_KEY', originalEnv.GOOGLE_API_KEY)
   restoreEnv('OPENAI_API_KEY', originalEnv.OPENAI_API_KEY)
   restoreEnv('OPENAI_BASE_URL', originalEnv.OPENAI_BASE_URL)
+  restoreEnv('OPENAI_API_BASE', originalEnv.OPENAI_API_BASE)
   restoreEnv('OPENAI_MODEL', originalEnv.OPENAI_MODEL)
+  restoreEnv('ANTHROPIC_BASE_URL', originalEnv.ANTHROPIC_BASE_URL)
+  restoreEnv('ANTHROPIC_MODEL', originalEnv.ANTHROPIC_MODEL)
   restoreEnv('ANTHROPIC_API_KEY', originalEnv.ANTHROPIC_API_KEY)
   restoreEnv('ANTHROPIC_AUTH_TOKEN', originalEnv.ANTHROPIC_AUTH_TOKEN)
   restoreEnv('ANTHROPIC_CUSTOM_HEADERS', originalEnv.ANTHROPIC_CUSTOM_HEADERS)
   globalThis.fetch = originalFetch
 })
 
-test('routes Gemini provider requests through the OpenAI-compatible shim', async () => {
+test('routes default provider requests through the OpenAI-compatible shim', async () => {
   let capturedUrl: string | undefined
   let capturedHeaders: Headers | undefined
   let capturedBody: Record<string, unknown> | undefined
@@ -90,13 +82,13 @@ test('routes Gemini provider requests through the OpenAI-compatible shim', async
 
     return new Response(
       JSON.stringify({
-        id: 'chatcmpl-gemini',
-        model: 'gemini-2.0-flash',
+        id: 'chatcmpl-test',
+        model: 'test-model',
         choices: [
           {
             message: {
               role: 'assistant',
-              content: 'gemini ok',
+              content: 'shim ok',
             },
             finish_reason: 'stop',
           },
@@ -117,23 +109,23 @@ test('routes Gemini provider requests through the OpenAI-compatible shim', async
 
   const client = (await getAnthropicClient({
     maxRetries: 0,
-    model: 'gemini-2.0-flash',
+    model: 'test-model',
   })) as unknown as ShimClient
 
   const response = await client.beta.messages.create({
-    model: 'gemini-2.0-flash',
+    model: 'test-model',
     system: 'test system',
     messages: [{ role: 'user', content: 'hello' }],
     max_tokens: 64,
     stream: false,
   })
 
-  expect(capturedUrl).toBe('https://gemini.example/v1beta/openai/chat/completions')
-  expect(capturedHeaders?.get('authorization')).toBe('Bearer gemini-test-key')
-  expect(capturedBody?.model).toBe('gemini-2.0-flash')
+  expect(capturedUrl).toBe('http://example.test/v1/chat/completions')
+  expect(capturedHeaders?.get('authorization')).toBe('Bearer openai-test-key')
+  expect(capturedBody?.model).toBe('test-model')
   expect(response).toMatchObject({
     role: 'assistant',
-    model: 'gemini-2.0-flash',
+    model: 'test-model',
   })
 })
 

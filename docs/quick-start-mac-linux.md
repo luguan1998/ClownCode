@@ -21,32 +21,18 @@ npm --version
 npm install -g @gitlawb/openclaude
 ```
 
-## 3. Pick One Provider
+## 3. Configure Your Internal Endpoint
 
-### Option A: OpenAI
-
-Replace `sk-your-key-here` with your real key.
+OpenClaude talks to one OpenAI-compatible endpoint. Set the endpoint, token, and
+model (values shown are placeholders):
 
 ```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_API_KEY=sk-your-key-here
-export OPENAI_MODEL=gpt-4o
+export ANTHROPIC_BASE_URL=http://gateway.internal/v1
+export ANTHROPIC_AUTH_TOKEN=your-token
+export ANTHROPIC_MODEL=internal-model
 
 openclaude
 ```
-
-### Option B: DeepSeek
-
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_API_KEY=sk-your-key-here
-export OPENAI_BASE_URL=https://api.deepseek.com/v1
-export OPENAI_MODEL=deepseek-v4-flash
-
-openclaude
-```
-
-Use `deepseek-v4-pro` when you want the stronger model. `deepseek-chat` and `deepseek-reasoner` still work as DeepSeek's legacy API aliases.
 
 ### Option C: Ollama
 
@@ -59,7 +45,6 @@ Then run:
 ```bash
 ollama pull llama3.1:8b
 
-export CLAUDE_CODE_USE_OPENAI=1
 export OPENAI_BASE_URL=http://localhost:11434/v1
 export OPENAI_MODEL=llama3.1:8b
 
@@ -83,7 +68,6 @@ Then in LM Studio:
 Then run:
 
 ```bash
-export CLAUDE_CODE_USE_OPENAI=1
 export OPENAI_BASE_URL=http://localhost:1234/v1
 export OPENAI_MODEL=your-model-name
 # export OPENAI_API_KEY=lmstudio  # optional: some users need a dummy key

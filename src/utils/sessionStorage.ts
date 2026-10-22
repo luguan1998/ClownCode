@@ -33,7 +33,6 @@ import {
 import { builtInCommandNames } from '../commands.js'
 import { COMMAND_NAME_TAG, TICK_TAG } from '../constants/xml.js'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
-import * as sessionIngress from '../services/api/sessionIngress.js'
 import { REPL_TOOL_NAME } from '../tools/REPLTool/constants.js'
 import {
   type AgentId,
@@ -1322,24 +1321,9 @@ class Project {
       return
     }
 
-    // v1 Session Ingress path
-    if (
-      !isEnvTruthy(process.env.ENABLE_SESSION_PERSISTENCE) ||
-      !this.remoteIngressUrl
-    ) {
-      return
-    }
-
-    const success = await sessionIngress.appendSessionLog(
-      sessionId,
-      entry,
-      this.remoteIngressUrl,
-    )
-
-    if (!success) {
-      logEvent('tengu_session_persistence_failed', {})
-      gracefulShutdownSync(1, 'other')
-    }
+    // OpenClaude: remote session ingress was removed. Sessions are stored
+    // locally only.
+    return
   }
 
   setRemoteIngressUrl(url: string): void {
@@ -1593,8 +1577,8 @@ export async function hydrateRemoteSession(
   const project = getProject()
 
   try {
-    const remoteLogs =
-      (await sessionIngress.getSessionLogs(sessionId, ingressUrl)) || []
+    // OpenClaude: remote session ingress was removed.
+    const remoteLogs: unknown[] = []
 
     // Ensure the project directory and session file exist
     const projectDir = getProjectDir(getOriginalCwd())

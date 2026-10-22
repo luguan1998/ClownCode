@@ -10,6 +10,7 @@ import { join } from 'node:path'
 
 const tempDirs: string[] = []
 const originalSimple = process.env.CLAUDE_CODE_SIMPLE
+const originalUseOpenAI = process.env.CLAUDE_CODE_USE_OPENAI
 const sessionId = '00000000-0000-4000-8000-000000001999'
 const ts = '2026-04-02T00:00:00.000Z'
 
@@ -47,6 +48,8 @@ async function writeJsonl(entry: unknown): Promise<string> {
 afterEach(async () => {
   mock.restore()
   process.env.CLAUDE_CODE_SIMPLE = originalSimple
+  if (originalUseOpenAI === undefined) delete process.env.CLAUDE_CODE_USE_OPENAI
+  else process.env.CLAUDE_CODE_USE_OPENAI = originalUseOpenAI
   await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
 })
 
@@ -105,8 +108,24 @@ test('deserializeMessagesWithInterruptDetection strips thinking blocks only for 
     user(id(13), 'follow up'),
   ]
 
+  delete process.env.CLAUDE_CODE_USE_OPENAI
   mock.module('./model/providers.js', () => ({
-    getAPIProvider: () => 'openai',
+    isOpenAIShimEnabled: () => {
+      const raw = process.env.CLAUDE_CODE_USE_OPENAI
+      if (raw === undefined || raw.trim() === '') return true
+      return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase())
+    },
+    getAPIProvider: () => {
+      const raw = process.env.CLAUDE_CODE_USE_OPENAI
+      const shim =
+        raw === undefined ||
+        raw.trim() === '' ||
+        ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase())
+      return shim ? 'openai' : 'firstParty'
+    },
+    getAPIProviderForStatsig: () => 'openai',
+    isFirstPartyAnthropicBaseUrl: () => true,
+    usesAnthropicAccountFlow: () => false,
     isOpenAICompatibleProvider: (provider: string) =>
       provider === 'openai' ||
       provider === 'gemini' ||
@@ -132,8 +151,24 @@ test('deserializeMessagesWithInterruptDetection strips thinking blocks only for 
   ).not.toContain('only hidden reasoning')
 
   mock.restore()
+  process.env.CLAUDE_CODE_USE_OPENAI = '0'
   mock.module('./model/providers.js', () => ({
-    getAPIProvider: () => 'bedrock',
+    isOpenAIShimEnabled: () => {
+      const raw = process.env.CLAUDE_CODE_USE_OPENAI
+      if (raw === undefined || raw.trim() === '') return true
+      return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase())
+    },
+    getAPIProvider: () => {
+      const raw = process.env.CLAUDE_CODE_USE_OPENAI
+      const shim =
+        raw === undefined ||
+        raw.trim() === '' ||
+        ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase())
+      return shim ? 'openai' : 'firstParty'
+    },
+    getAPIProviderForStatsig: () => 'firstParty',
+    isFirstPartyAnthropicBaseUrl: () => true,
+    usesAnthropicAccountFlow: () => false,
     isOpenAICompatibleProvider: (provider: string) =>
       provider === 'openai' ||
       provider === 'gemini' ||

@@ -21,9 +21,10 @@ type OllamaTagsResponse = {
 
 function getNormalizedOpenAIBaseUrl(): string {
   return (
+    process.env.ANTHROPIC_BASE_URL ??
     process.env.OPENAI_BASE_URL ??
     process.env.OPENAI_API_BASE ??
-    'https://api.openai.com/v1'
+    ''
   ).replace(/\/+$/, '')
 }
 

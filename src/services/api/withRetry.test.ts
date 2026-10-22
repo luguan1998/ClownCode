@@ -53,11 +53,26 @@ async function importFreshWithRetryModule(
     | 'codex'
     | 'foundry' = 'firstParty',
 ) {
+  if (provider === 'firstParty') {
+    process.env.CLAUDE_CODE_USE_OPENAI = '0'
+  } else {
+    delete process.env.CLAUDE_CODE_USE_OPENAI
+  }
   mock.restore()
-  mock.module('src/utils/model/providers.js', () => ({
-    getAPIProvider: () => provider,
-    getAPIProviderForStatsig: () => provider,
-  }))
+  mock.module('src/utils/model/providers.js', () => {
+    const isShim = () => {
+      const raw = process.env.CLAUDE_CODE_USE_OPENAI
+      if (raw === undefined || raw.trim() === '') return true
+      return ['1', 'true', 'yes', 'on'].includes(raw.trim().toLowerCase())
+    }
+    return {
+      isOpenAIShimEnabled: isShim,
+      getAPIProvider: () => (isShim() ? 'openai' : 'firstParty'),
+      getAPIProviderForStatsig: () => (isShim() ? 'openai' : 'firstParty'),
+      isFirstPartyAnthropicBaseUrl: () => true,
+      usesAnthropicAccountFlow: () => false,
+    }
+  })
   return import(`./withRetry.js?ts=${Date.now()}-${Math.random()}`)
 }
 

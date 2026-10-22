@@ -23,7 +23,7 @@ import { getPluginsDirectory } from './pluginDirectories.js'
 const INSTALL_COUNTS_CACHE_VERSION = 1
 const INSTALL_COUNTS_CACHE_FILENAME = 'install-counts-cache.json'
 const INSTALL_COUNTS_URL =
-  'https://raw.githubusercontent.com/anthropics/claude-plugins-official/refs/heads/stats/stats/plugin-installs.json'
+  ''
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
 
 /**
@@ -223,53 +223,10 @@ async function fetchInstallCountsFromGitHub(): Promise<
  * @returns Map of plugin ID (name@marketplace) to install count, or null if unavailable
  */
 export async function getInstallCounts(): Promise<Map<string, number> | null> {
-  // Try to load from cache first
-  const cache = await loadInstallCountsCache()
-  if (cache) {
-    logForDebugging('Using cached install counts')
-    logPluginFetch('install_counts', INSTALL_COUNTS_URL, 'cache_hit', 0)
-    const map = new Map<string, number>()
-    for (const entry of cache.counts) {
-      map.set(entry.plugin, entry.unique_installs)
-    }
-    return map
-  }
-
-  // Cache miss or stale - fetch from GitHub
-  try {
-    const counts = await fetchInstallCountsFromGitHub()
-
-    // Save to cache
-    const newCache: InstallCountsCache = {
-      version: INSTALL_COUNTS_CACHE_VERSION,
-      fetchedAt: new Date().toISOString(),
-      counts,
-    }
-    await saveInstallCountsCache(newCache)
-
-    // Convert to Map
-    const map = new Map<string, number>()
-    for (const entry of counts) {
-      map.set(entry.plugin, entry.unique_installs)
-    }
-    return map
-  } catch (error) {
-    // Log error and return null so UI can hide counts
-    logError(error)
-    logForDebugging(`Failed to fetch install counts: ${errorMessage(error)}`)
-    return null
-  }
+  // OpenClaude: remote install-count statistics were removed.
+  return null
 }
 
-/**
- * Format an install count for display.
- *
- * @param count - The raw install count
- * @returns Formatted string:
- *   - <1000: raw number (e.g., "42")
- *   - >=1000: K suffix with 1 decimal (e.g., "1.2K", "36.2K")
- *   - >=1000000: M suffix with 1 decimal (e.g., "1.2M")
- */
 export function formatInstallCount(count: number): string {
   if (count < 1000) {
     return String(count)

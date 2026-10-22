@@ -2,14 +2,7 @@
  * HTTP utility constants and helpers
  */
 
-import axios from 'axios'
-import { OAUTH_BETA_HEADER } from '../constants/oauth.js'
-import {
-  getAnthropicApiKey,
-  getClaudeAIOAuthTokens,
-  handleOAuth401Error,
-  isClaudeAISubscriber,
-} from './auth.js'
+import { getAnthropicApiKey } from './auth.js'
 import { getAPIProvider } from './model/providers.js'
 import { getClaudeCodeUserAgent } from './userAgent.js'
 import { getWorkload } from './workloadContext.js'
@@ -72,23 +65,11 @@ export type AuthHeaders = {
  * Returns either OAuth headers for Max/Pro users or API key headers for regular users
  */
 export function getAuthHeaders(): AuthHeaders {
-  if (isClaudeAISubscriber()) {
-    const oauthTokens = getClaudeAIOAuthTokens()
-    if (!oauthTokens?.accessToken) {
-      return {
-        headers: {},
-        error: 'No OAuth token available',
-      }
-    }
-    return {
-      headers: {
-        Authorization: `Bearer ${oauthTokens.accessToken}`,
-        'anthropic-beta': OAUTH_BETA_HEADER,
-      },
-    }
+  // OpenClaude: static credentials only (no OAuth).
+  const authToken = process.env.ANTHROPIC_AUTH_TOKEN?.trim()
+  if (authToken) {
+    return { headers: { Authorization: `Bearer ${authToken}` } }
   }
-  // TODO: this will fail if the API key is being set to an LLM Gateway key
-  // should we try to query keychain / credentials for a valid Anthropic key?
   const apiKey = getAnthropicApiKey()
   if (!apiKey) {
     return {
@@ -119,23 +100,8 @@ export function getAuthHeaders(): AuthHeaders {
  */
 export async function withOAuth401Retry<T>(
   request: () => Promise<T>,
-  opts?: { also403Revoked?: boolean },
+  _opts?: { also403Revoked?: boolean },
 ): Promise<T> {
-  try {
-    return await request()
-  } catch (err) {
-    if (!axios.isAxiosError(err)) throw err
-    const status = err.response?.status
-    const isAuthError =
-      status === 401 ||
-      (opts?.also403Revoked &&
-        status === 403 &&
-        typeof err.response?.data === 'string' &&
-        err.response.data.includes('OAuth token has been revoked'))
-    if (!isAuthError) throw err
-    const failedAccessToken = getClaudeAIOAuthTokens()?.accessToken
-    if (!failedAccessToken) throw err
-    await handleOAuth401Error(failedAccessToken)
-    return await request()
-  }
+  // OpenClaude: OAuth token refresh was removed; surface the error as-is.
+  return request()
 }

@@ -1,7 +1,11 @@
-import { afterEach, expect, mock, test } from 'bun:test'
+import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 
 const originalFetch = globalThis.fetch
 const originalEnv = {
+  ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
+  ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL,
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+  ANTHROPIC_AUTH_TOKEN: process.env.ANTHROPIC_AUTH_TOKEN,
   OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
   OPENAI_API_KEY: process.env.OPENAI_API_KEY,
   OPENAI_MODEL: process.env.OPENAI_MODEL,
@@ -15,8 +19,19 @@ function restoreEnv(key: string, value: string | undefined): void {
   }
 }
 
+beforeEach(() => {
+  delete process.env.ANTHROPIC_BASE_URL
+  delete process.env.ANTHROPIC_MODEL
+  delete process.env.ANTHROPIC_API_KEY
+  delete process.env.ANTHROPIC_AUTH_TOKEN
+})
+
 afterEach(() => {
   globalThis.fetch = originalFetch
+  restoreEnv('ANTHROPIC_BASE_URL', originalEnv.ANTHROPIC_BASE_URL)
+  restoreEnv('ANTHROPIC_MODEL', originalEnv.ANTHROPIC_MODEL)
+  restoreEnv('ANTHROPIC_API_KEY', originalEnv.ANTHROPIC_API_KEY)
+  restoreEnv('ANTHROPIC_AUTH_TOKEN', originalEnv.ANTHROPIC_AUTH_TOKEN)
   restoreEnv('OPENAI_BASE_URL', originalEnv.OPENAI_BASE_URL)
   restoreEnv('OPENAI_API_KEY', originalEnv.OPENAI_API_KEY)
   restoreEnv('OPENAI_MODEL', originalEnv.OPENAI_MODEL)
@@ -27,6 +42,17 @@ test('logs classified transport diagnostics with category and code', async () =>
   const debugSpy = mock(() => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
+    logAntError: () => {},
+    isDebugToStdErr: () => false,
+    isDebugMode: () => false,
+    enableDebugLogging: () => false,
+    getMinDebugLogLevel: () => 'debug',
+    getDebugFilter: () => null,
+    getDebugFilePath: () => null,
+    setHasFormattedOutput: () => {},
+    getHasFormattedOutput: () => false,
+    flushDebugLogs: async () => {},
+    getDebugLogPath: () => '',
   }))
 
   const nonce = `${Date.now()}-${Math.random()}`
@@ -74,6 +100,17 @@ test('redacts credentials in transport diagnostic URL logs', async () => {
   const debugSpy = mock(() => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
+    logAntError: () => {},
+    isDebugToStdErr: () => false,
+    isDebugMode: () => false,
+    enableDebugLogging: () => false,
+    getMinDebugLogLevel: () => 'debug',
+    getDebugFilter: () => null,
+    getDebugFilePath: () => null,
+    setHasFormattedOutput: () => {},
+    getHasFormattedOutput: () => false,
+    flushDebugLogs: async () => {},
+    getDebugLogPath: () => '',
   }))
 
   const nonce = `${Date.now()}-${Math.random()}`
@@ -121,6 +158,17 @@ test('logs self-heal localhost fallback with redacted from/to URLs', async () =>
   const debugSpy = mock(() => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
+    logAntError: () => {},
+    isDebugToStdErr: () => false,
+    isDebugMode: () => false,
+    enableDebugLogging: () => false,
+    getMinDebugLogLevel: () => 'debug',
+    getDebugFilter: () => null,
+    getDebugFilePath: () => null,
+    setHasFormattedOutput: () => {},
+    getHasFormattedOutput: () => false,
+    flushDebugLogs: async () => {},
+    getDebugLogPath: () => '',
   }))
 
   const nonce = `${Date.now()}-${Math.random()}`
@@ -198,6 +246,17 @@ test('logs self-heal toolless retry for local tool-call incompatibility', async 
   const debugSpy = mock(() => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
+    logAntError: () => {},
+    isDebugToStdErr: () => false,
+    isDebugMode: () => false,
+    enableDebugLogging: () => false,
+    getMinDebugLogLevel: () => 'debug',
+    getDebugFilter: () => null,
+    getDebugFilePath: () => null,
+    setHasFormattedOutput: () => {},
+    getHasFormattedOutput: () => false,
+    flushDebugLogs: async () => {},
+    getDebugLogPath: () => '',
   }))
 
   const nonce = `${Date.now()}-${Math.random()}`

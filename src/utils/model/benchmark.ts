@@ -22,22 +22,11 @@ const MAX_TOKENS = 50
 const TIMEOUT_MS = 30000
 
 function getBenchmarkEndpoint(): string | null {
-  const provider = getAPIProvider()
-  const baseUrl = process.env.OPENAI_BASE_URL
-  
-  // Check for Ollama (local)
-  if (baseUrl?.includes('localhost:11434') || baseUrl?.includes('localhost:11435')) {
-    return `${baseUrl}/chat/completions`
-  }
-  // OpenAI-compatible endpoints
-  if (provider === 'openai' || provider === 'firstParty') {
-    return `${baseUrl || 'https://api.openai.com/v1'}/chat/completions`
-  }
-  // NVIDIA NIM or MiniMax via OPENAI_BASE_URL
-  if (baseUrl?.includes('nvidia') || baseUrl?.includes('minimax')) {
-    return `${baseUrl}/chat/completions`
-  }
-  return null
+  const baseUrl =
+    process.env.ANTHROPIC_BASE_URL ??
+    process.env.OPENAI_BASE_URL ??
+    process.env.OPENAI_API_BASE
+  return baseUrl ? `${baseUrl.replace(/\/+$/, '')}/chat/completions` : null
 }
 
 function getBenchmarkAuthHeader(): string | null {

@@ -1,23 +1,9 @@
-import { useEffect, useState } from 'react'
-import {
-  type ClaudeAILimits,
-  currentLimits,
-  statusListeners,
-} from './claudeAiLimits.js'
+import { currentLimits, type ClaudeAILimits } from './claudeAiLimits.js'
 
+/**
+ * OpenClaude: cloud quota tracking was removed. Always return the neutral
+ * "allowed" state so UI components render without network access.
+ */
 export function useClaudeAiLimits(): ClaudeAILimits {
-  const [limits, setLimits] = useState<ClaudeAILimits>({ ...currentLimits })
-
-  useEffect(() => {
-    const listener = (newLimits: ClaudeAILimits) => {
-      setLimits({ ...newLimits })
-    }
-    statusListeners.add(listener)
-
-    return () => {
-      statusListeners.delete(listener)
-    }
-  }, [])
-
-  return limits
+  return currentLimits
 }

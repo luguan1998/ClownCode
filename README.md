@@ -39,9 +39,9 @@ OpenClaude is also mirrored to GitLawb:
 
 ## Why OpenClaude
 
-- Use one CLI across cloud APIs and local model backends
-- Save provider profiles inside the app with `/provider`
-- Run with OpenAI-compatible services, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, Atomic Chat, and other supported providers
+- Run against a single internal OpenAI-compatible endpoint
+- Configure everything from `settings.json`; no login or provider wizard
+- Optionally switch to the native Anthropic SDK with `CLAUDE_CODE_USE_OPENAI=0`
 - Keep coding-agent workflows in one place: bash, file tools, grep, glob, agents, tasks, MCP, and web tools
 - Use the bundled VS Code extension for launch integration and theme support
 
@@ -61,64 +61,34 @@ If the install later reports `ripgrep not found`, install ripgrep system-wide an
 openclaude
 ```
 
-Inside OpenClaude:
+OpenClaude is configured through `settings.json` only. There is no `/provider`
+wizard, profile file, or login command.
 
-- run `/provider` for guided provider setup and saved profiles
-- run `/onboard-github` for GitHub Models onboarding
+### Minimal setup
 
-### Fastest OpenAI setup
+Add the endpoint and model to `~/.claude/settings.json` (or
+`~/.openclaude/settings.json`):
 
-macOS / Linux:
-
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_API_KEY=sk-your-key-here
-export OPENAI_MODEL=gpt-4o
-
-openclaude
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://gateway.internal/v1",
+    "ANTHROPIC_AUTH_TOKEN": "your-token",
+    "ANTHROPIC_MODEL": "internal-model"
+  }
+}
 ```
 
-Windows PowerShell:
+The OpenAI-compatible shim is the default. `ANTHROPIC_BASE_URL` is preferred;
+`OPENAI_BASE_URL` and `OPENAI_API_BASE` are accepted as fallbacks. Credentials
+resolve as `ANTHROPIC_AUTH_TOKEN` → `ANTHROPIC_API_KEY` → `OPENAI_API_KEY`.
 
-```powershell
-$env:CLAUDE_CODE_USE_OPENAI="1"
-$env:OPENAI_API_KEY="sk-your-key-here"
-$env:OPENAI_MODEL="gpt-4o"
+Set `CLAUDE_CODE_USE_OPENAI=0` to use the native Anthropic SDK instead. In
+that mode `ANTHROPIC_BASE_URL` and a static credential are still required;
+there is no OAuth login.
 
-openclaude
-```
-
-### Fastest local Ollama setup
-
-macOS / Linux:
-
-```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_BASE_URL=http://localhost:11434/v1
-export OPENAI_MODEL=qwen2.5-coder:7b
-
-openclaude
-```
-
-Windows PowerShell:
-
-```powershell
-$env:CLAUDE_CODE_USE_OPENAI="1"
-$env:OPENAI_BASE_URL="http://localhost:11434/v1"
-$env:OPENAI_MODEL="qwen2.5-coder:7b"
-
-openclaude
-```
-
-### Using Ollama's launch command
-
-If you have [Ollama](https://ollama.com) installed, you can skip the env var setup entirely:
-
-```bash
-ollama launch openclaude --model qwen2.5-coder:7b
-```
-
-This automatically sets `ANTHROPIC_BASE_URL`, model routing, and auth so all API traffic goes through your local Ollama instance. Works with any model you have pulled — local or cloud.
+If no base URL is configured, OpenClaude exits with an actionable error rather
+than contacting a public default endpoint.
 
 ## Setup Guides
 
@@ -133,36 +103,26 @@ Advanced and source-build guides:
 - [Advanced Setup](docs/advanced-setup.md)
 - [Android Install](ANDROID_INSTALL.md)
 
-## Supported Providers
+## Supported Transports
 
-| Provider | Setup Path | Notes |
+| Transport | Selection | Notes |
 | --- | --- | --- |
-| OpenAI-compatible | `/provider` or env vars | Works with OpenAI, OpenRouter, DeepSeek, Groq, Mistral, LM Studio, and other compatible `/v1` servers |
-| Gemini | `/provider` or env vars | Supports API key, access token, or local ADC workflow on current `main` |
-| GitHub Models | `/onboard-github` | Interactive onboarding with saved credentials |
-| Codex OAuth | `/provider` | Opens ChatGPT sign-in in your browser and stores Codex credentials securely |
-| Codex | `/provider` | Uses existing Codex CLI auth, OpenClaude secure storage, or env credentials |
-| Ollama | `/provider`, env vars, or `ollama launch` | Local inference with no API key |
-| Atomic Chat | `/provider`, env vars, or `bun run dev:atomic-chat` | Local Model Provider; auto-detects loaded models |
-| Bedrock / Vertex / Foundry | env vars | Additional provider integrations for supported environments |
+| OpenAI-compatible shim | default | Uses `ANTHROPIC_BASE_URL` → `OPENAI_BASE_URL` → `OPENAI_API_BASE`; supports `chat_completions` and optional `responses` format |
+| Native Anthropic SDK | `CLAUDE_CODE_USE_OPENAI=0` | Static credentials only; no OAuth login |
 
 ## What Works
 
 - **Tool-driven coding workflows**: Bash, file read/write/edit, grep, glob, agents, tasks, MCP, and slash commands
 - **Streaming responses**: Real-time token output and tool progress
 - **Tool calling**: Multi-step tool loops with model calls, tool execution, and follow-up responses
-- **Images**: URL and base64 image inputs for providers that support vision
-- **Provider profiles**: Guided setup plus saved `.openclaude-profile.json` support
-- **Local and remote model backends**: Cloud APIs, local servers, and Apple Silicon local inference
+- **Images**: URL and base64 image inputs for models that support vision
+- **Single-endpoint configuration**: All settings live in `settings.json` env
 
 ## Provider Notes
 
-OpenClaude supports multiple providers, but behavior is not identical across all of them.
-
-- Anthropic-specific features may not exist on other providers
 - Tool quality depends heavily on the selected model
 - Smaller local models can struggle with long multi-step tool flows
-- Some providers impose lower output caps than the CLI defaults, and OpenClaude adapts where possible
+- Some endpoints impose lower output caps than the CLI defaults, and OpenClaude adapts where possible
 
 For best results, use models with strong tool/function calling support.
 
@@ -175,21 +135,21 @@ Add to `~/.claude/settings.json`:
 ```json
 {
   "agentModels": {
-    "deepseek-v4-flash": {
-      "base_url": "https://api.deepseek.com/v1",
-      "api_key": "sk-your-key"
+    "fast-internal": {
+      "base_url": "http://gateway.internal/v1",
+      "api_key": "your-token"
     },
-    "gpt-4o": {
-      "base_url": "https://api.openai.com/v1",
-      "api_key": "sk-your-key"
+    "strong-internal": {
+      "base_url": "http://gateway.internal/v1",
+      "api_key": "your-token"
     }
   },
   "agentRouting": {
-    "Explore": "deepseek-v4-flash",
-    "Plan": "gpt-4o",
-    "general-purpose": "gpt-4o",
-    "frontend-dev": "deepseek-v4-flash",
-    "default": "gpt-4o"
+    "Explore": "fast-internal",
+    "Plan": "strong-internal",
+    "general-purpose": "strong-internal",
+    "frontend-dev": "strong-internal",
+    "default": "strong-internal"
   }
 }
 ```

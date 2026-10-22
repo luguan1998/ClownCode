@@ -1,11 +1,5 @@
 import { APIError } from '@anthropic-ai/sdk'
 import { buildAnthropicUsageFromRawUsage } from './cacheMetrics.js'
-import { compressToolHistory } from './compressToolHistory.js'
-import { fetchWithProxyRetry } from './fetchWithProxyRetry.js'
-import type {
-  ResolvedCodexCredentials,
-  ResolvedProviderRequest,
-} from './providerConfig.js'
 import { sanitizeSchemaForOpenAICompat } from './openaiSchemaSanitizer.js'
 import {
   createThinkTagFilter,
@@ -118,19 +112,6 @@ function normalizeToolUseId(toolUseId: string | undefined): {
     id: `fc_${value}`,
     callId: value,
   }
-}
-
-function convertSystemPrompt(system: unknown): string {
-  if (!system) return ''
-  if (typeof system === 'string') return system
-  if (Array.isArray(system)) {
-    return system
-      .map((block: { type?: string; text?: string }) =>
-        block.type === 'text' ? (block.text ?? '') : '',
-      )
-      .join('\n\n')
-  }
-  return String(system)
 }
 
 function convertToolResultToText(content: unknown): string {
@@ -453,129 +434,6 @@ function isStrictResponsesSchema(schema: unknown): boolean {
   }
 
   return true
-}
-
-function convertToolChoice(toolChoice: unknown): unknown {
-  const choice = toolChoice as { type?: string; name?: string } | undefined
-  if (!choice?.type) return undefined
-  if (choice.type === 'auto') return 'auto'
-  if (choice.type === 'any') return 'required'
-  if (choice.type === 'none') return 'none'
-  if (choice.type === 'tool' && choice.name) {
-    return {
-      type: 'function',
-      name: choice.name,
-    }
-  }
-  return undefined
-}
-
-export async function performCodexRequest(options: {
-  request: ResolvedProviderRequest
-  credentials: ResolvedCodexCredentials
-  params: ShimCreateParams
-  defaultHeaders: Record<string, string>
-  signal?: AbortSignal
-}): Promise<Response> {
-  const compressedMessages = compressToolHistory(
-    options.params.messages as Array<{
-      role?: string
-      message?: { role?: string; content?: unknown }
-      content?: unknown
-    }>,
-    options.request.resolvedModel,
-  )
-  const input = convertAnthropicMessagesToResponsesInput(compressedMessages)
-  const body: Record<string, unknown> = {
-    model: options.request.resolvedModel,
-    input: input.length > 0
-      ? input
-      : [
-          {
-            type: 'message',
-            role: 'user',
-            content: [{ type: 'input_text', text: '' }],
-          },
-        ],
-    store: false,
-    stream: true,
-  }
-
-  const instructions = convertSystemPrompt(options.params.system)
-  if (instructions) {
-    body.instructions = instructions
-  }
-
-  const toolChoice = convertToolChoice(options.params.tool_choice)
-  if (toolChoice) {
-    body.tool_choice = toolChoice
-  }
-
-  if (options.params.tools && options.params.tools.length > 0) {
-    const convertedTools = convertToolsToResponsesTools(
-      options.params.tools as Array<{
-        name?: string
-        description?: string
-        input_schema?: Record<string, unknown>
-      }>,
-    )
-    if (convertedTools.length > 0) {
-      body.tools = convertedTools
-      body.parallel_tool_calls = true
-      body.tool_choice ??= 'auto'
-    }
-  }
-
-  if (options.request.reasoning) {
-    body.reasoning = options.request.reasoning
-  }
-
-  const isTargetModel =
-    options.request.resolvedModel?.toLowerCase().includes('gpt') ||
-    options.request.resolvedModel?.toLowerCase().includes('codex')
-
-  // Only pass temperature and top_p if it's not a GPT/Codex model that rejects them
-  if (!isTargetModel) {
-    if (options.params.temperature !== undefined) {
-      body.temperature = options.params.temperature
-    }
-    if (options.params.top_p !== undefined) {
-      body.top_p = options.params.top_p
-    }
-  }
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...options.defaultHeaders,
-    Authorization: `Bearer ${options.credentials.apiKey}`,
-  }
-  if (options.credentials.accountId) {
-    headers['chatgpt-account-id'] = options.credentials.accountId
-  }
-  headers.originator ??= 'openclaude'
-
-  const response = await fetchWithProxyRetry(
-    `${options.request.baseUrl}/responses`,
-    {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: options.signal,
-    },
-  )
-
-  if (!response.ok) {
-    const errorBody = await response.text().catch(() => 'unknown error')
-    let errorResponse: object | undefined
-    try { errorResponse = JSON.parse(errorBody) } catch { /* raw text */ }
-    throw APIError.generate(
-      response.status, errorResponse,
-      `Codex API error ${response.status}: ${errorBody}`,
-      response.headers as unknown as Headers,
-    )
-  }
-
-  return response
 }
 
 async function* readSseEvents(response: Response, signal?: AbortSignal): AsyncGenerator<CodexSseEvent> {

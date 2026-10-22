@@ -13,6 +13,30 @@ const BANNED_PATTERNS = [
   'infra.ant.dev',
   'claude-code-feedback',
   'C07VBSHV7EV',
+  // OpenClaude: no vendor/cloud model endpoints may be bundled.
+  'api.openai.com',
+  'chatgpt.com',
+  'auth.openai.com',
+  'api.deepseek.com',
+  'generativelanguage.googleapis.com',
+  'api.mistral.ai',
+  'models.github.ai',
+  'api.githubcopilot.com',
+  'api.x.ai',
+  'api.minimax.io',
+  'integrate.api.nvidia.com',
+  'llm.bankr.bot',
+  'api.z.ai',
+  'api.moonshot.ai',
+  'api.moonshot.cn',
+  'api.kimi.com',
+  'downloads.claude.ai',
+  'raw.githubusercontent.com/anthropics/claude-plugins-official',
+  // NOTE: `api.anthropic.com`, `platform.claude.com`, and the bare string
+  // `claude.ai` are intentionally not banned. The Anthropic SDK bundles its
+  // default base URL as an inert fallback (OpenClaude always passes
+  // ANTHROPIC_BASE_URL explicitly), and the other occurrences are docs/brand
+  // text in warning messages and UI labels, not request targets.
 ] as const
 
 if (!existsSync(DIST)) {

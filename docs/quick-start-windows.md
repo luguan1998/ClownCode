@@ -21,32 +21,18 @@ npm --version
 npm install -g @gitlawb/openclaude
 ```
 
-## 3. Pick One Provider
+## 3. Configure Your Internal Endpoint
 
-### Option A: OpenAI
-
-Replace `sk-your-key-here` with your real key.
+OpenClaude talks to one OpenAI-compatible endpoint. Set the endpoint, token, and
+model (values shown are placeholders):
 
 ```powershell
-$env:CLAUDE_CODE_USE_OPENAI="1"
-$env:OPENAI_API_KEY="sk-your-key-here"
-$env:OPENAI_MODEL="gpt-4o"
+$env:ANTHROPIC_BASE_URL="http://gateway.internal/v1"
+$env:ANTHROPIC_AUTH_TOKEN="your-token"
+$env:ANTHROPIC_MODEL="internal-model"
 
 openclaude
 ```
-
-### Option B: DeepSeek
-
-```powershell
-$env:CLAUDE_CODE_USE_OPENAI="1"
-$env:OPENAI_API_KEY="sk-your-key-here"
-$env:OPENAI_BASE_URL="https://api.deepseek.com/v1"
-$env:OPENAI_MODEL="deepseek-v4-flash"
-
-openclaude
-```
-
-Use `deepseek-v4-pro` when you want the stronger model. `deepseek-chat` and `deepseek-reasoner` still work as DeepSeek's legacy API aliases.
 
 ### Option C: Ollama
 

@@ -60,25 +60,25 @@ The proxy will start at `http://localhost:4000` by default.
 ### Option A: Environment Variables
 
 ```bash
-export CLAUDE_CODE_USE_OPENAI=1
-export OPENAI_BASE_URL=http://localhost:4000
-export OPENAI_API_KEY=<your-master-key-or-placeholder>
-export OPENAI_MODEL=<your-litellm-model-alias>
+export ANTHROPIC_BASE_URL=http://localhost:4000
+export ANTHROPIC_AUTH_TOKEN=<your-master-key-or-placeholder>
+export ANTHROPIC_MODEL=<your-litellm-model-alias>
 openclaude
 ```
 
-Replace `<your-litellm-model-alias>` with a model name from your `litellm_config.yaml` (e.g., `gpt-4o`, `claude-sonnet-4`, `gemini-2.5-flash`).
+Replace `<your-litellm-model-alias>` with a model name from your `litellm_config.yaml`.
 
-### Option B: Using /provider
+### Option B: settings.json
 
-1. Run `openclaude`
-2. Type `/provider` to open the provider setup flow
-3. Choose the **OpenAI-compatible** option
-4. When prompted for the API key, enter the key required by your LiteLLM proxy
-   If your local LiteLLM setup does not enforce auth, you may still need to enter a placeholder value
-      - 5. When prompted for the base URL, enter `http://localhost:4000`
-        6. 6. When prompted for the model, enter the LiteLLM model name or alias you configured
-           7. 7. Save the provider configuration
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:4000",
+    "ANTHROPIC_AUTH_TOKEN": "<your-master-key-or-placeholder>",
+    "ANTHROPIC_MODEL": "<your-litellm-model-alias>"
+  }
+}
+```
 
 ## 3. Example LiteLLM Configs
 

@@ -1,7 +1,9 @@
 import type { ModelName } from './model.js'
 import type { APIProvider } from './providers.js'
 
-export type ModelConfig = Record<APIProvider, ModelName>
+// OpenClaude: provider-specific columns are retained for first-party and
+// OpenAI-compatible transports. Extra keys are tolerated for older configs.
+export type ModelConfig = Record<APIProvider, ModelName> & Record<string, ModelName>
 
 // ---------------------------------------------------------------------------
 // OpenAI-compatible model mappings

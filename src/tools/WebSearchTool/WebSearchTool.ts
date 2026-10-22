@@ -10,10 +10,7 @@ import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/gr
 import { queryModelWithStreaming } from '../../services/api/claude.js'
 import { collectCodexCompletedResponse } from '../../services/api/codexShim.js'
 import { fetchWithProxyRetry } from '../../services/api/fetchWithProxyRetry.js'
-import {
-  resolveCodexApiCredentials,
-  resolveProviderRequest,
-} from '../../services/api/providerConfig.js'
+import { resolveProviderRequest } from '../../services/api/providerConfig.js'
 import { buildTool, type ToolDef } from '../../Tool.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import { logError } from '../../utils/log.js'
@@ -335,17 +332,21 @@ async function runCodexWebSearch(
   const startTime = performance.now()
   const request = resolveProviderRequest({
     model: getMainLoopModel(),
-    baseUrl: process.env.OPENAI_BASE_URL,
+    baseUrl:
+      process.env.ANTHROPIC_BASE_URL ??
+      process.env.OPENAI_BASE_URL ??
+      process.env.OPENAI_API_BASE,
   })
-  const credentials = resolveCodexApiCredentials()
+  const credentials = {
+    apiKey:
+      process.env.ANTHROPIC_AUTH_TOKEN ||
+      process.env.ANTHROPIC_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      '',
+  }
 
   if (!credentials.apiKey) {
-    throw new Error('Codex web search requires CODEX_API_KEY or a valid auth.json.')
-  }
-  if (!credentials.accountId) {
-    throw new Error(
-      'Codex web search requires CHATGPT_ACCOUNT_ID or an auth.json with chatgpt_account_id.',
-    )
+    throw new Error('Web search requires a configured API key.')
   }
 
   const body: Record<string, unknown> = {

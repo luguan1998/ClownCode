@@ -1,4 +1,3 @@
-import axios from 'axios'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { dirname, join } from 'path'
 import { coerce } from 'semver'
@@ -25,10 +24,6 @@ const MAX_RELEASE_NOTES_SHOWN = 5
  * 2. We fetch the changelog in the background and store it in config
  * 3. Next time the user starts Claude, the cached changelog is available immediately
  */
-export const CHANGELOG_URL =
-  'https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md'
-const RAW_CHANGELOG_URL =
-  'https://raw.githubusercontent.com/anthropics/claude-code/refs/heads/main/CHANGELOG.md'
 
 /**
  * Get the path for the cached changelog file.
@@ -80,42 +75,8 @@ export async function migrateChangelogFromConfig(): Promise<void> {
  * This runs in the background and doesn't block the UI
  */
 export async function fetchAndStoreChangelog(): Promise<void> {
-  // Skip in noninteractive mode
-  if (getIsNonInteractiveSession()) {
-    return
-  }
-
-  // Skip network requests if nonessential traffic is disabled
-  if (isEssentialTrafficOnly()) {
-    return
-  }
-
-  const response = await axios.get(RAW_CHANGELOG_URL)
-  if (response.status === 200) {
-    const changelogContent = response.data
-
-    // Skip write if content unchanged — writing Date.now() defeats the
-    // dirty-check in saveGlobalConfig since the timestamp always differs.
-    if (changelogContent === changelogMemoryCache) {
-      return
-    }
-
-    const cachePath = getChangelogCachePath()
-
-    // Ensure cache directory exists
-    await mkdir(dirname(cachePath), { recursive: true })
-
-    // Write changelog to cache file
-    await writeFile(cachePath, changelogContent, { encoding: 'utf-8' })
-    changelogMemoryCache = changelogContent
-
-    // Update timestamp in config
-    const changelogLastFetched = Date.now()
-    saveGlobalConfig(current => ({
-      ...current,
-      changelogLastFetched,
-    }))
-  }
+  // OpenClaude: release notes are not fetched from GitHub in intranet builds.
+  return
 }
 
 /**
