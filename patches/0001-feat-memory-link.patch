@@ -1,0 +1,2500 @@
+From 4605ad30df38d1a8fbe52e229ea72f9b0c2d1db3 Mon Sep 17 00:00:00 2001
+From: luguan1998 <2292732930@qq.com>
+Date: Thu, 22 Oct 2026 19:36:13 +0800
+Subject: [PATCH] feat: memory link
+
+---
+ scripts/no-telemetry-plugin.ts             |   3 +
+ src/memdir/findRelevantMemories.ts         |   2 +
+ src/memdir/memdir.ts                       |  85 ++--
+ src/memdir/memoryLinks.test.ts             | 129 ++++++
+ src/memdir/memoryLinks.ts                  | 146 +++++++
+ src/memdir/memoryScan.test.ts              |  21 +-
+ src/memdir/memoryScan.ts                   |   7 +-
+ src/memdir/memoryTypes.test.ts             |  53 +++
+ src/memdir/memoryTypes.ts                  | 385 ++++++++----------
+ src/memdir/teamMemPrompts.ts               |  94 ++---
+ src/services/extractMemories/prompts.ts    | 132 +++---
+ src/skills/bundled/claudeApi.ts            | 196 ---------
+ src/skills/bundled/claudeApiContent.ts     |  75 ----
+ src/skills/bundled/index.ts                |  39 +-
+ src/skills/bundled/memoryTypes.ts          | 121 ++++++
+ src/skills/bundled/scheduleRemoteAgents.ts | 447 ---------------------
+ src/skills/bundled/stuck.ts                |   1 -
+ src/skills/bundled/verifyContent.ts        |  13 -
+ src/utils/attachments.ts                   |  93 ++++-
+ src/utils/frontmatterParser.ts             |   7 +-
+ src/utils/messages.ts                      |  10 +-
+ 21 files changed, 863 insertions(+), 1196 deletions(-)
+ create mode 100644 src/memdir/memoryLinks.test.ts
+ create mode 100644 src/memdir/memoryLinks.ts
+ create mode 100644 src/memdir/memoryTypes.test.ts
+ delete mode 100644 src/skills/bundled/claudeApi.ts
+ delete mode 100644 src/skills/bundled/claudeApiContent.ts
+ create mode 100644 src/skills/bundled/memoryTypes.ts
+ delete mode 100644 src/skills/bundled/scheduleRemoteAgents.ts
+ delete mode 100644 src/skills/bundled/stuck.ts
+ delete mode 100644 src/skills/bundled/verifyContent.ts
+
+diff --git a/scripts/no-telemetry-plugin.ts b/scripts/no-telemetry-plugin.ts
+index 27f2ddd..ef6198c 100644
+--- a/scripts/no-telemetry-plugin.ts
++++ b/scripts/no-telemetry-plugin.ts
+@@ -54,6 +54,9 @@ const _openBuildDefaults = {
+   'tengu_hive_evidence': true,  // VERIFICATION_AGENT — read-only test/verification agent (upstream: false)
+   'tengu_passport_quail': true, // EXTRACT_MEMORIES — enable memory extraction (upstream: false)
+   'tengu_coral_fern': true,     // EXTRACT_MEMORIES — enable memory search in past context (upstream: false)
++  'tengu_moth_copse': true,     // Recall-surfaced memories: MEMORY.md leaves the system prompt and
++                                // relevant topic files are injected per turn instead, which is what
++                                // makes [[name]] links meaningful.
+ };
+ 
+ /* ── Known runtime feature keys (reference only) ───────────────────────
+diff --git a/src/memdir/findRelevantMemories.ts b/src/memdir/findRelevantMemories.ts
+index 78b6f84..6192031 100644
+--- a/src/memdir/findRelevantMemories.ts
++++ b/src/memdir/findRelevantMemories.ts
+@@ -20,6 +20,8 @@ const SELECT_MEMORIES_SYSTEM_PROMPT = `You are selecting memories that will be u
+ Return a list of filenames for the memories that will clearly be useful to Claude Code as it processes the user's query (up to 5). Only include memories that you are certain will be helpful based on their name and description.
+ - If you are unsure if a memory will be useful in processing the user's query, then do not include it in your list. Be selective and discerning.
+ - If there are no memories in the list that would clearly be useful, feel free to return an empty list.
++- Be especially conservative with user-profile and project-overview memories ([user], [project]). These describe the user's ongoing focus, not what every question is about. A profile saying "works on DB performance" is NOT relevant to a question that merely contains the word "performance" unless the question is actually about that DB work. Match on what the question IS ABOUT, not on surface keyword overlap with who the user is.
++- Memories you have already returned for an earlier query in this conversation are filtered out before you see them; do not work around that by selecting a near-duplicate file.
+ - If a list of recently-used tools is provided, do not select memories that are usage reference or API documentation for those tools (Claude Code is already exercising them). DO still select memories containing warnings, gotchas, or known issues about those tools — active use is exactly when those matter.
+ `
+ 
+diff --git a/src/memdir/memdir.ts b/src/memdir/memdir.ts
+index 1e7e68b..8727910 100644
+--- a/src/memdir/memdir.ts
++++ b/src/memdir/memdir.ts
+@@ -25,10 +25,12 @@ import { getProjectDir } from '../utils/sessionStorage.js'
+ import { getInitialSettings } from '../utils/settings/settings.js'
+ import {
+   MEMORY_FRONTMATTER_EXAMPLE,
+-  TRUSTING_RECALL_SECTION,
+-  TYPES_SECTION_INDIVIDUAL,
+-  WHAT_NOT_TO_SAVE_SECTION,
+-  WHEN_TO_ACCESS_SECTION,
++  MEMORY_LINK_CONVENTION,
++  MEMORY_RECALL_CONTEXT_NOTE,
++  MEMORY_SAVE_GUARD,
++  MEMORY_TYPE_GLOSSES,
++  memoryFileCapLine,
++  memoryIndexPointerLine,
+ } from './memoryTypes.js'
+ 
+ export const ENTRYPOINT_NAME = 'MEMORY.md'
+@@ -185,13 +187,18 @@ function logMemoryDirCounts(
+ }
+ 
+ /**
+- * Build the typed-memory behavioral instructions (without MEMORY.md content).
+- * Constrains memories to a closed four-type taxonomy (user / feedback / project /
+- * reference) — content that is derivable from the current project state (code
+- * patterns, architecture, git history) is explicitly excluded.
++ * OpenClaude: build the typed-memory behavioral instructions (without
++ * MEMORY.md content).
+  *
+- * Individual-only variant: no `## Memory scope` section, no <scope> tags
+- * in type blocks, and team/private qualifiers stripped from examples.
++ * Memories are constrained to four types (user / feedback / project /
++ * reference); content derivable from the current project state is excluded by
++ * MEMORY_SAVE_GUARD. The long per-type taxonomy lives in the `memory-types`
++ * skill — this prompt only carries the one-line glosses, so it stays small
++ * enough to sit in every request.
++ *
++ * The shape mirrors upstream's compact prompt: frontmatter, the `[[name]]`
++ * link convention, the gloss paragraph, the index pointer (or the per-file
++ * cap when no index is injected), and the save guard + recall note.
+  *
+  * Used by both buildMemoryPrompt (agent memory, includes content) and
+  * loadMemoryPrompt (system prompt, content injected via user context instead).
+@@ -202,59 +209,25 @@ export function buildMemoryLines(
+   extraGuidelines?: string[],
+   skipIndex = false,
+ ): string[] {
+-  const howToSave = skipIndex
+-    ? [
+-        '## How to save memories',
+-        '',
+-        'Write each memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:',
+-        '',
+-        ...MEMORY_FRONTMATTER_EXAMPLE,
+-        '',
+-        '- Keep the name, description, and type fields in memory files up-to-date with the content',
+-        '- Organize memory semantically by topic, not chronologically',
+-        '- Update or remove memories that turn out to be wrong or outdated',
+-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
+-      ]
+-    : [
+-        '## How to save memories',
+-        '',
+-        'Saving a memory is a two-step process:',
+-        '',
+-        '**Step 1** — write the memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:',
+-        '',
+-        ...MEMORY_FRONTMATTER_EXAMPLE,
+-        '',
+-        `**Step 2** — add a pointer to that file in \`${ENTRYPOINT_NAME}\`. \`${ENTRYPOINT_NAME}\` is an index, not a memory — each entry should be one line, under ~150 characters: \`- [Title](file.md) — one-line hook\`. It has no frontmatter. Never write memory content directly into \`${ENTRYPOINT_NAME}\`.`,
+-        '',
+-        `- \`${ENTRYPOINT_NAME}\` is always loaded into your conversation context — lines after ${MAX_ENTRYPOINT_LINES} will be truncated, so keep the index concise`,
+-        '- Keep the name, description, and type fields in memory files up-to-date with the content',
+-        '- Organize memory semantically by topic, not chronologically',
+-        '- Update or remove memories that turn out to be wrong or outdated',
+-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
+-      ]
++  // The index pointer is only meaningful when an index exists; the two index
++  // caps it references are enforced by truncateEntrypointContent().
++  const indexPointer = skipIndex
++    ? undefined
++    : memoryIndexPointerLine({ entrypointName: ENTRYPOINT_NAME })
+ 
+   const lines: string[] = [
+     `# ${displayName}`,
+     '',
+-    `You have a persistent, file-based memory system at \`${memoryDir}\`. ${DIR_EXISTS_GUIDANCE}`,
+-    '',
+-    "You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.",
+-    '',
+-    'If the user explicitly asks you to remember something, save it immediately as whichever type fits best. If they ask you to forget something, find and remove the relevant entry.',
+-    '',
+-    ...TYPES_SECTION_INDIVIDUAL,
+-    ...WHAT_NOT_TO_SAVE_SECTION,
++    `You have a persistent file-based memory at \`${memoryDir}\`. ${DIR_EXISTS_GUIDANCE} Each memory is one file holding one fact, with frontmatter:`,
+     '',
+-    ...howToSave,
++    ...MEMORY_FRONTMATTER_EXAMPLE,
+     '',
+-    ...WHEN_TO_ACCESS_SECTION,
++    MEMORY_LINK_CONVENTION,
+     '',
+-    ...TRUSTING_RECALL_SECTION,
++    MEMORY_TYPE_GLOSSES,
+     '',
+-    '## Memory and other forms of persistence',
+-    'Memory is one of several persistence mechanisms available to you as you assist the user in a given conversation. The distinction is often that memory can be recalled in future conversations and should not be used for persisting information that is only useful within the scope of the current conversation.',
+-    '- When to use or update a plan instead of memory: If you are about to start a non-trivial implementation task and would like to reach alignment with the user on your approach you should use a Plan rather than saving this information to memory. Similarly, if you already have a plan within the conversation and you have changed your approach persist that change by updating the plan rather than saving a memory.',
+-    '- When to use or update tasks instead of memory: When you need to break your work in current conversation into discrete steps or keep track of your progress use tasks instead of saving to memory. Tasks are great for persisting information about the work that needs to be done in the current conversation, but memory should be reserved for information that will be useful in future conversations.',
++    ...(indexPointer ? [indexPointer, ''] : [memoryFileCapLine(), '']),
++    `${MEMORY_SAVE_GUARD} ${MEMORY_RECALL_CONTEXT_NOTE}`,
+     '',
+     ...(extraGuidelines ?? []),
+     '',
+@@ -354,7 +327,7 @@ function buildAssistantDailyLogPrompt(skipIndex = false): string {
+     '- Pointers to external systems (dashboards, Linear projects, Slack channels)',
+     '- Anything the user explicitly asks you to remember',
+     '',
+-    ...WHAT_NOT_TO_SAVE_SECTION,
++    MEMORY_SAVE_GUARD,
+     '',
+     ...(skipIndex
+       ? []
+diff --git a/src/memdir/memoryLinks.test.ts b/src/memdir/memoryLinks.test.ts
+new file mode 100644
+index 0000000..d21ce5b
+--- /dev/null
++++ b/src/memdir/memoryLinks.test.ts
+@@ -0,0 +1,129 @@
++import { afterEach, expect, test } from 'bun:test'
++import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
++import { tmpdir } from 'os'
++import { join } from 'path'
++import { extractMemoryLinks, resolveLinkedMemoryPaths } from './memoryLinks.js'
++
++let tempDir: string
++
++afterEach(async () => {
++  if (tempDir) {
++    await rm(tempDir, { recursive: true, force: true })
++  }
++})
++
++/** Memory file body with the nested `metadata.type` frontmatter the prompt asks for. */
++function memoryFile(name: string, body: string, type = 'project'): string {
++  return `---\nname: ${name}\ndescription: desc for ${name}\nmetadata:\n  type: ${type}\n---\n\n${body}\n`
++}
++
++test('extractMemoryLinks reads body links in order and ignores frontmatter', () => {
++  const content = memoryFile(
++    'alpha',
++    'See [[beta]], then [[gamma]] and [[beta]] again.',
++  )
++  expect(extractMemoryLinks(content)).toEqual(['beta', 'gamma'])
++})
++
++test('extractMemoryLinks ignores wiki-style links in the description', () => {
++  const content = `---\nname: alpha\ndescription: supersedes [[beta]]\nmetadata:\n  type: project\n---\n\nno links here\n`
++  expect(extractMemoryLinks(content)).toEqual([])
++})
++
++test('extractMemoryLinks rejects path-shaped and aliased links', () => {
++  const content = memoryFile(
++    'alpha',
++    '[[../../etc/passwd]] [[/abs/path]] [[ok-slug|display text]]',
++  )
++  expect(extractMemoryLinks(content)).toEqual(['ok-slug'])
++})
++
++test('resolveLinkedMemoryPaths resolves by filename stem', async () => {
++  tempDir = await mkdtemp(join(tmpdir(), 'memoryLinks-'))
++  const alpha = memoryFile('alpha', 'related: [[beta]]')
++  await writeFile(join(tempDir, 'alpha.md'), alpha)
++  await writeFile(join(tempDir, 'beta.md'), memoryFile('beta', 'body'))
++
++  const out = await resolveLinkedMemoryPaths({
++    memoryDir: tempDir,
++    sources: [{ path: join(tempDir, 'alpha.md'), content: alpha }],
++    skip: new Set([join(tempDir, 'alpha.md')]),
++    limit: 5,
++  })
++
++  expect(out).toEqual([join(tempDir, 'beta.md')])
++})
++
++test('resolveLinkedMemoryPaths falls back to the frontmatter name', async () => {
++  tempDir = await mkdtemp(join(tmpdir(), 'memoryLinks-'))
++  const alpha = memoryFile('alpha', 'related: [[renamed-topic]]')
++  await writeFile(join(tempDir, 'alpha.md'), alpha)
++  // Stem and `name:` diverge — the link names the slug, not the file.
++  await writeFile(
++    join(tempDir, 'some-filename.md'),
++    memoryFile('renamed-topic', 'body'),
++  )
++
++  const out = await resolveLinkedMemoryPaths({
++    memoryDir: tempDir,
++    sources: [{ path: join(tempDir, 'alpha.md'), content: alpha }],
++    skip: new Set(),
++    limit: 5,
++  })
++
++  expect(out).toEqual([join(tempDir, 'some-filename.md')])
++})
++
++test('resolveLinkedMemoryPaths drops unresolved links and respects limit', async () => {
++  tempDir = await mkdtemp(join(tmpdir(), 'memoryLinks-'))
++  const alpha = memoryFile('alpha', '[[missing]] [[beta]] [[gamma]]')
++  await writeFile(join(tempDir, 'alpha.md'), alpha)
++  await writeFile(join(tempDir, 'beta.md'), memoryFile('beta', 'body'))
++  await writeFile(join(tempDir, 'gamma.md'), memoryFile('gamma', 'body'))
++
++  const out = await resolveLinkedMemoryPaths({
++    memoryDir: tempDir,
++    sources: [{ path: join(tempDir, 'alpha.md'), content: alpha }],
++    skip: new Set(),
++    limit: 1,
++  })
++
++  expect(out).toEqual([join(tempDir, 'beta.md')])
++})
++
++test('resolveLinkedMemoryPaths does not follow links out of the memory dir', async () => {
++  tempDir = await mkdtemp(join(tmpdir(), 'memoryLinks-'))
++  const sub = join(tempDir, 'team')
++  await mkdir(sub, { recursive: true })
++  const alpha = memoryFile('alpha', '[[escaped]]')
++  await writeFile(join(tempDir, 'alpha.md'), alpha)
++  // Only in the subdirectory: a slug there must not satisfy a link from the
++  // parent, or a team memory could be pulled into a private surface.
++  await writeFile(join(sub, 'escaped.md'), memoryFile('escaped', 'body'))
++
++  const out = await resolveLinkedMemoryPaths({
++    memoryDir: tempDir,
++    sources: [{ path: join(tempDir, 'alpha.md'), content: alpha }],
++    skip: new Set(),
++    limit: 5,
++  })
++
++  expect(out).toEqual([])
++})
++
++test('resolveLinkedMemoryPaths skips already-surfaced files', async () => {
++  tempDir = await mkdtemp(join(tmpdir(), 'memoryLinks-'))
++  const alpha = memoryFile('alpha', '[[beta]]')
++  const betaPath = join(tempDir, 'beta.md')
++  await writeFile(join(tempDir, 'alpha.md'), alpha)
++  await writeFile(betaPath, memoryFile('beta', 'body'))
++
++  const out = await resolveLinkedMemoryPaths({
++    memoryDir: tempDir,
++    sources: [{ path: join(tempDir, 'alpha.md'), content: alpha }],
++    skip: new Set([betaPath]),
++    limit: 5,
++  })
++
++  expect(out).toEqual([])
++})
+diff --git a/src/memdir/memoryLinks.ts b/src/memdir/memoryLinks.ts
+new file mode 100644
+index 0000000..a67ec64
+--- /dev/null
++++ b/src/memdir/memoryLinks.ts
+@@ -0,0 +1,146 @@
++/**
++ * OpenClaude: `[[name]]` memory links.
++ *
++ * Memory files reference each other by slug in the body:
++ *
++ *     ... 相关背景见 [[openclaude-intranet-agent-base-goal]]。
++ *
++ * The write-side convention lives in the memory prompt (memoryTypes.ts
++ * MEMORY_LINK_CONVENTION). This module is the read side: it pulls the links
++ * out of an already-read memory body and resolves them to sibling files, so
++ * the recall path can bring one hop of linked memories along with a file the
++ * selector picked directly. A memory that points at its own background then
++ * arrives with that background instead of leaving the model to guess at a
++ * filename from a slug.
++ *
++ * Resolution is by slug only — the file's `name:` field, which the convention
++ * ties to the filename stem. A link that resolves to nothing is not an error:
++ * the prompt explicitly allows forward references to memories worth writing
++ * later.
++ *
++ * Resolution probes the filesystem per slug rather than indexing the whole
++ * directory: recall runs every turn, memory directories reach 200 files, and
++ * the links in a handful of surfaced memories are at most a few dozen names.
++ */
++
++import { existsSync } from 'fs'
++import { readdir } from 'fs/promises'
++import { basename, join } from 'path'
++import { parseFrontmatter } from '../utils/frontmatterParser.js'
++import { readFileInRange } from '../utils/readFileInRange.js'
++
++/**
++ * Matches `[[slug]]` and `[[slug|alias]]`, capturing the slug. The slug
++ * character set is what the frontmatter `name:` field allows
++ * (`short-kebab-case-slug`), so a link can never name a path.
++ */
++const WIKILINK_RE = /\[\[([a-z0-9][a-z0-9._-]*)(?:\|[^[\]]*)?\]\]/gi
++
++/** Lines read from a candidate file when its stem does not match the slug. */
++const NAME_LOOKUP_LINES = 30
++
++/**
++ * Slugs referenced from a memory body, in first-seen order, de-duplicated.
++ * Frontmatter is skipped — a `[[...]]` inside a description is prose, not a
++ * link edge.
++ */
++export function extractMemoryLinks(content: string): string[] {
++  const { content: body } = parseFrontmatter(content)
++  const seen = new Set<string>()
++  const out: string[] = []
++  for (const match of body.matchAll(WIKILINK_RE)) {
++    const slug = match[1] ?? ''
++    if (slug === '' || slug.includes('..') || seen.has(slug)) continue
++    seen.add(slug)
++    out.push(slug)
++  }
++  return out
++}
++
++/**
++ * Map a slug to a file in `memoryDir`, or undefined when nothing matches.
++ *
++ * The conventional case — `name:` equal to the filename stem — is a single
++ * existsSync. Only when that misses do we look through the directory for a
++ * file whose frontmatter `name:` is the slug, which is the hand-written case
++ * where the two diverge.
++ */
++async function resolveSlug(
++  memoryDir: string,
++  slug: string,
++): Promise<string | undefined> {
++  const direct = join(memoryDir, `${slug}.md`)
++  if (existsSync(direct)) {
++    return direct
++  }
++
++  let entries: string[]
++  try {
++    entries = await readdir(memoryDir)
++  } catch {
++    return undefined
++  }
++  for (const entry of entries) {
++    if (!entry.endsWith('.md') || entry === 'MEMORY.md') continue
++    if (basename(entry, '.md') === slug) return join(memoryDir, entry)
++  }
++  for (const entry of entries) {
++    if (!entry.endsWith('.md') || entry === 'MEMORY.md') continue
++    const filePath = join(memoryDir, entry)
++    try {
++      const { content } = await readFileInRange(filePath, 0, NAME_LOOKUP_LINES)
++      const { frontmatter } = parseFrontmatter(content, filePath)
++      if (typeof frontmatter.name === 'string' && frontmatter.name === slug) {
++        return filePath
++      }
++    } catch {
++      // Unreadable candidate: skip it, the stem pass already had its chance.
++    }
++  }
++  return undefined
++}
++
++/**
++ * Resolve one hop of `[[name]]` links out of memories that were just read.
++ *
++ * Returns absolute paths for linked files inside `memoryDir` that are not
++ * already in `skip`, in first-seen order. Depth is deliberately one hop:
++ * following transitively would let a densely cross-linked memory directory
++ * pull its whole contents into a single turn's budget.
++ */
++export async function resolveLinkedMemoryPaths(params: {
++  memoryDir: string
++  sources: ReadonlyArray<{ path: string; content: string }>
++  skip: ReadonlySet<string>
++  limit: number
++  signal?: AbortSignal
++}): Promise<string[]> {
++  const { memoryDir, sources, skip, limit, signal } = params
++  const taken = new Set(skip)
++  // Slugs repeat across sources (a shared background is linked from many
++  // memories), and several slugs can miss entirely. Cache both outcomes so a
++  // directory of N linked files costs N resolutions, not one per link.
++  const resolved = new Map<string, string | undefined>()
++  const out: string[] = []
++
++  for (const source of sources) {
++    if (out.length >= limit) break
++    for (const slug of extractMemoryLinks(source.content)) {
++      if (out.length >= limit) break
++      if (signal?.aborted) return out
++
++      let target: string | undefined
++      if (resolved.has(slug)) {
++        target = resolved.get(slug)
++      } else {
++        target = await resolveSlug(memoryDir, slug)
++        resolved.set(slug, target)
++      }
++      if (target === undefined || taken.has(target)) continue
++      taken.add(target)
++      out.push(target)
++    }
++  }
++
++  return out
++}
+diff --git a/src/memdir/memoryScan.test.ts b/src/memdir/memoryScan.test.ts
+index e5b66ec..208044d 100644
+--- a/src/memdir/memoryScan.test.ts
++++ b/src/memdir/memoryScan.test.ts
+@@ -17,19 +17,26 @@ afterEach(async () => {
+ 
+ test('scanMemoryFiles finds .md files at shallow depth', async () => {
+   tempDir = await mkdtemp(join(tmpdir(), 'memoryScan-'))
+-  await writeFile(join(tempDir, 'note.md'), '---\nname: test\ntype: user\n---\nContent')
++  await writeFile(
++    join(tempDir, 'note.md'),
++    '---\nname: test\nmetadata:\n  type: user\n---\nContent',
++  )
+ 
+   const controller = new AbortController()
+   const result = await scanMemoryFiles(tempDir, controller.signal)
+ 
+   expect(result.length).toBe(1)
+   expect(result[0].filename).toBe('note.md')
++  expect(result[0].type).toBe('user')
+ })
+ 
+ test('scanMemoryFiles ignores MEMORY.md', async () => {
+   tempDir = await mkdtemp(join(tmpdir(), 'memoryScan-'))
+   await writeFile(join(tempDir, 'MEMORY.md'), '# index')
+-  await writeFile(join(tempDir, 'user_role.md'), '---\nname: role\ntype: user\n---\nContent')
++  await writeFile(
++    join(tempDir, 'user_role.md'),
++    '---\nname: role\nmetadata:\n  type: user\n---\nContent',
++  )
+ 
+   const controller = new AbortController()
+   const result = await scanMemoryFiles(tempDir, controller.signal)
+@@ -42,12 +49,18 @@ test('scanMemoryFiles does not return .md files nested beyond max depth', async
+   tempDir = await mkdtemp(join(tmpdir(), 'memoryScan-'))
+ 
+   // Shallow file - should be found
+-  await writeFile(join(tempDir, 'shallow.md'), '---\nname: shallow\ntype: user\n---\nContent')
++  await writeFile(
++    join(tempDir, 'shallow.md'),
++    '---\nname: shallow\nmetadata:\n  type: user\n---\nContent',
++  )
+ 
+   // Deeply nested file (depth 5) - should be excluded
+   const deepDir = join(tempDir, 'd1', 'd2', 'd3', 'd4', 'd5')
+   await mkdir(deepDir, { recursive: true })
+-  await writeFile(join(deepDir, 'deep.md'), '---\nname: deep\ntype: user\n---\nContent')
++  await writeFile(
++    join(deepDir, 'deep.md'),
++    '---\nname: deep\nmetadata:\n  type: user\n---\nContent',
++  )
+ 
+   const controller = new AbortController()
+   const result = await scanMemoryFiles(tempDir, controller.signal)
+diff --git a/src/memdir/memoryScan.ts b/src/memdir/memoryScan.ts
+index 5440f30..50530b8 100644
+--- a/src/memdir/memoryScan.ts
++++ b/src/memdir/memoryScan.ts
+@@ -8,7 +8,7 @@ import { readdir } from 'fs/promises'
+ import { basename, join } from 'path'
+ import { parseFrontmatter } from '../utils/frontmatterParser.js'
+ import { readFileInRange } from '../utils/readFileInRange.js'
+-import { type MemoryType, parseMemoryType } from './memoryTypes.js'
++import { type MemoryType, memoryTypeFromFrontmatter } from './memoryTypes.js'
+ 
+ export type MemoryHeader = {
+   filename: string
+@@ -65,7 +65,10 @@ export async function scanMemoryFiles(
+           filePath,
+           mtimeMs,
+           description: frontmatter.description || null,
+-          type: parseMemoryType(frontmatter.type),
++          // OpenClaude: the type lives under `metadata:` so memory files can
++          // carry other bookkeeping fields without colliding with the skill and
++          // command frontmatter keys this parser also serves.
++          type: memoryTypeFromFrontmatter(frontmatter),
+         }
+       }),
+     )
+diff --git a/src/memdir/memoryTypes.test.ts b/src/memdir/memoryTypes.test.ts
+new file mode 100644
+index 0000000..8560b04
+--- /dev/null
++++ b/src/memdir/memoryTypes.test.ts
+@@ -0,0 +1,53 @@
++import { expect, test } from 'bun:test'
++import {
++  MEMORY_FRONTMATTER_EXAMPLE,
++  MEMORY_LINK_CONVENTION,
++  MEMORY_TYPE_GLOSSES,
++  memoryFileCapLine,
++  memoryIndexPointerLine,
++  typesSection,
++} from './memoryTypes.js'
++
++test('frontmatter example nests the type under metadata', () => {
++  const example = MEMORY_FRONTMATTER_EXAMPLE.join('\n')
++  expect(example).toContain('metadata:')
++  expect(example).toContain('  type: user | feedback | project | reference')
++  // The flat shape must not survive: scanMemoryFiles reads metadata.type first,
++  // and a prompt teaching the old shape would write files it cannot classify.
++  expect(example).not.toContain('\ntype: user')
++})
++
++test('link convention allows forward references', () => {
++  expect(MEMORY_LINK_CONVENTION).toContain('[[name]]')
++  expect(MEMORY_LINK_CONVENTION).toContain("doesn't match an existing memory yet")
++})
++
++test('glosses name all four types', () => {
++  for (const type of ['user', 'feedback', 'project', 'reference']) {
++    expect(MEMORY_TYPE_GLOSSES).toContain(`\`${type}\``)
++  }
++})
++
++test('index pointer names the entrypoint, cap line names the size', () => {
++  const pointer = memoryIndexPointerLine({ entrypointName: 'MEMORY.md' })
++  expect(pointer).toContain('`MEMORY.md`')
++  expect(pointer).toContain('- [Title](file.md)')
++  expect(pointer).not.toContain('team/')
++  expect(
++    memoryIndexPointerLine({
++      entrypointName: 'MEMORY.md',
++      teamPrefixes: ['team/'],
++    }),
++  ).toContain('`team/`')
++  expect(memoryFileCapLine()).toContain('4KB')
++})
++
++test('types section points at the skill instead of the full taxonomy', () => {
++  const individual = typesSection(false).join('\n')
++  expect(individual).toContain('`memory-types`')
++  expect(individual).not.toContain('<types>')
++  expect(individual).not.toContain('Memory scope')
++
++  const combined = typesSection(true).join('\n')
++  expect(combined).toContain('always private')
++})
+diff --git a/src/memdir/memoryTypes.ts b/src/memdir/memoryTypes.ts
+index 99b4483..dad49ef 100644
+--- a/src/memdir/memoryTypes.ts
++++ b/src/memdir/memoryTypes.ts
+@@ -1,16 +1,26 @@
+ /**
+- * Memory type taxonomy.
++ * Memory type taxonomy and the memory-prompt fragments.
+  *
+- * Memories are constrained to four types capturing context NOT derivable
+- * from the current project state. Code patterns, architecture, git history,
+- * and file structure are derivable (via grep/git/CLAUDE.md) and should NOT
+- * be saved as memories.
++ * OpenClaude: rewritten to match upstream Claude Code 2.1.296's compact memory
++ * prompt. Upstream cut the always-on system-prompt taxonomy down to one prose
++ * block — a four-bullet `## Types of memory` list and a single gloss line —
++ * and moved the long `<types>` blocks (scope / when_to_save / how_to_use /
++ * examples) into the `memory-types` bundled skill, which the model reads only
++ * once it has decided to save something.
++ *
++ * `[[name]]` wikilinks carry the rest of what the old long prompt said inline:
++ * the convention lives here, and the recall path expands a link one hop
++ * (memoryLinks.ts), so a link is the thing that pulls a related memory into
++ * context.
+  *
+- * The two TYPES_SECTION_* exports below are intentionally duplicated rather
+- * than generated from a shared spec — keeping them flat makes per-mode edits
+- * trivial without reasoning through a helper's conditional rendering.
++ * Memories are still constrained to four types capturing context NOT derivable
++ * from the current project state. Code patterns, architecture, git history,
++ * and file structure are derivable (via grep/git/CLAUDE.md) and should NOT be
++ * saved as memories.
+  */
+ 
++import { formatFileSize } from '../utils/format.js'
++
+ export const MEMORY_TYPES = [
+   'user',
+   'feedback',
+@@ -22,250 +32,171 @@ export type MemoryType = (typeof MEMORY_TYPES)[number]
+ 
+ /**
+  * Parse a raw frontmatter value into a MemoryType.
+- * Invalid or missing values return undefined — legacy files without a
+- * `type:` field keep working, files with unknown types degrade gracefully.
++ * Invalid or missing values return undefined — unknown types degrade
++ * gracefully rather than failing the scan.
+  */
+-export function parseMemoryType(raw: unknown): MemoryType | undefined {
++function parseMemoryType(raw: unknown): MemoryType | undefined {
+   if (typeof raw !== 'string') return undefined
+   return MEMORY_TYPES.find(t => t === raw)
+ }
+ 
+ /**
+- * `## Types of memory` section for COMBINED mode (private + team directories).
+- * Includes <scope> tags and team/private qualifiers in examples.
++ * Read the memory type out of a parsed frontmatter object.
++ *
++ * The type lives under a `metadata:` map, so a memory file can carry other
++ * bookkeeping fields without colliding with the skill and command frontmatter
++ * keys that share this parser.
+  */
+-export const TYPES_SECTION_COMBINED: readonly string[] = [
+-  '## Types of memory',
+-  '',
+-  'There are several discrete types of memory that you can store in your memory system. Each type below declares a <scope> of `private`, `team`, or guidance for choosing between the two.',
+-  '',
+-  '<types>',
+-  '<type>',
+-  '    <name>user</name>',
+-  '    <scope>always private</scope>',
+-  "    <description>Contain information about the user's role, goals, responsibilities, and knowledge. Great user memories help you tailor your future behavior to the user's preferences and perspective. Your goal in reading and writing these memories is to build up an understanding of who the user is and how you can be most helpful to them specifically. For example, you should collaborate with a senior software engineer differently than a student who is coding for the very first time. Keep in mind, that the aim here is to be helpful to the user. Avoid writing memories about the user that could be viewed as a negative judgement or that are not relevant to the work you're trying to accomplish together.</description>",
+-  "    <when_to_save>When you learn any details about the user's role, preferences, responsibilities, or knowledge</when_to_save>",
+-  "    <how_to_use>When your work should be informed by the user's profile or perspective. For example, if the user is asking you to explain a part of the code, you should answer that question in a way that is tailored to the specific details that they will find most valuable or that helps them build their mental model in relation to domain knowledge they already have.</how_to_use>",
+-  '    <examples>',
+-  "    user: I'm a data scientist investigating what logging we have in place",
+-  '    assistant: [saves private user memory: user is a data scientist, currently focused on observability/logging]',
+-  '',
+-  "    user: I've been writing Go for ten years but this is my first time touching the React side of this repo",
+-  "    assistant: [saves private user memory: deep Go expertise, new to React and this project's frontend — frame frontend explanations in terms of backend analogues]",
+-  '    </examples>',
+-  '</type>',
+-  '<type>',
+-  '    <name>feedback</name>',
+-  '    <scope>default to private. Save as team only when the guidance is clearly a project-wide convention that every contributor should follow (e.g., a testing policy, a build invariant), not a personal style preference.</scope>',
+-  "    <description>Guidance the user has given you about how to approach work — both what to avoid and what to keep doing. These are a very important type of memory to read and write as they allow you to remain coherent and responsive to the way you should approach work in the project. Record from failure AND success: if you only save corrections, you will avoid past mistakes but drift away from approaches the user has already validated, and may grow overly cautious. Before saving a private feedback memory, check that it doesn't contradict a team feedback memory — if it does, either don't save it or note the override explicitly.</description>",
+-  '    <when_to_save>Any time the user corrects your approach ("no not that", "don\'t", "stop doing X") OR confirms a non-obvious approach worked ("yes exactly", "perfect, keep doing that", accepting an unusual choice without pushback). Corrections are easy to notice; confirmations are quieter — watch for them. In both cases, save what is applicable to future conversations, especially if surprising or not obvious from the code. Include *why* so you can judge edge cases later.</when_to_save>',
+-  '    <how_to_use>Let these memories guide your behavior so that the user and other users in the project do not need to offer the same guidance twice.</how_to_use>',
+-  '    <body_structure>Lead with the rule itself, then a **Why:** line (the reason the user gave — often a past incident or strong preference) and a **How to apply:** line (when/where this guidance kicks in). Knowing *why* lets you judge edge cases instead of blindly following the rule.</body_structure>',
+-  '    <examples>',
+-  "    user: don't mock the database in these tests — we got burned last quarter when mocked tests passed but the prod migration failed",
+-  '    assistant: [saves team feedback memory: integration tests must hit a real database, not mocks. Reason: prior incident where mock/prod divergence masked a broken migration. Team scope: this is a project testing policy, not a personal preference]',
+-  '',
+-  '    user: stop summarizing what you just did at the end of every response, I can read the diff',
+-  "    assistant: [saves private feedback memory: this user wants terse responses with no trailing summaries. Private because it's a communication preference, not a project convention]",
+-  '',
+-  "    user: yeah the single bundled PR was the right call here, splitting this one would've just been churn",
+-  '    assistant: [saves private feedback memory: for refactors in this area, user prefers one bundled PR over many small ones. Confirmed after I chose this approach — a validated judgment call, not a correction]',
+-  '    </examples>',
+-  '</type>',
+-  '<type>',
+-  '    <name>project</name>',
+-  '    <scope>private or team, but strongly bias toward team</scope>',
+-  '    <description>Information that you learn about ongoing work, goals, initiatives, bugs, or incidents within the project that is not otherwise derivable from the code or git history. Project memories help you understand the broader context and motivation behind the work users are working on within this working directory.</description>',
+-  '    <when_to_save>When you learn who is doing what, why, or by when. These states change relatively quickly so try to keep your understanding of this up to date. Always convert relative dates in user messages to absolute dates when saving (e.g., "Thursday" → "2026-03-05"), so the memory remains interpretable after time passes.</when_to_save>',
+-  "    <how_to_use>Use these memories to more fully understand the details and nuance behind the user's request, anticipate coordination issues across users, make better informed suggestions.</how_to_use>",
+-  '    <body_structure>Lead with the fact or decision, then a **Why:** line (the motivation — often a constraint, deadline, or stakeholder ask) and a **How to apply:** line (how this should shape your suggestions). Project memories decay fast, so the why helps future-you judge whether the memory is still load-bearing.</body_structure>',
+-  '    <examples>',
+-  "    user: we're freezing all non-critical merges after Thursday — mobile team is cutting a release branch",
+-  '    assistant: [saves team project memory: merge freeze begins 2026-03-05 for mobile release cut. Flag any non-critical PR work scheduled after that date]',
+-  '',
+-  "    user: the reason we're ripping out the old auth middleware is that legal flagged it for storing session tokens in a way that doesn't meet the new compliance requirements",
+-  '    assistant: [saves team project memory: auth middleware rewrite is driven by legal/compliance requirements around session token storage, not tech-debt cleanup — scope decisions should favor compliance over ergonomics]',
+-  '    </examples>',
+-  '</type>',
+-  '<type>',
+-  '    <name>reference</name>',
+-  '    <scope>usually team</scope>',
+-  '    <description>Stores pointers to where information can be found in external systems. These memories allow you to remember where to look to find up-to-date information outside of the project directory.</description>',
+-  '    <when_to_save>When you learn about resources in external systems and their purpose. For example, that bugs are tracked in a specific project in Linear or that feedback can be found in a specific Slack channel.</when_to_save>',
+-  '    <how_to_use>When the user references an external system or information that may be in an external system.</how_to_use>',
+-  '    <examples>',
+-  '    user: check the Linear project "INGEST" if you want context on these tickets, that\'s where we track all pipeline bugs',
+-  '    assistant: [saves team reference memory: pipeline bugs are tracked in Linear project "INGEST"]',
+-  '',
+-  "    user: the Grafana board at grafana.internal/d/api-latency is what oncall watches — if you're touching request handling, that's the thing that'll page someone",
+-  '    assistant: [saves team reference memory: grafana.internal/d/api-latency is the oncall latency dashboard — check it when editing request-path code]',
+-  '    </examples>',
+-  '</type>',
+-  '</types>',
+-  '',
+-]
++export function memoryTypeFromFrontmatter(
++  frontmatter: { metadata?: unknown } | undefined,
++): MemoryType | undefined {
++  const metadata = frontmatter?.metadata
++  if (typeof metadata !== 'object' || metadata === null) return undefined
++  return parseMemoryType((metadata as Record<string, unknown>).type)
++}
++
++/** Name of the bundled skill holding the full taxonomy. */
++export const MEMORY_TYPES_SKILL_NAME = 'memory-types'
+ 
+ /**
+- * `## Types of memory` section for INDIVIDUAL-ONLY mode (single directory).
+- * No <scope> tags. Examples use plain `[saves X memory: …]`. Prose that
+- * only makes sense with a private/team split is reworded.
++ * Per-file size cap advertised to the model. Mirrors the recall surfacer's
++ * byte cap (attachments.ts MAX_MEMORY_BYTES) so the number the prompt states
++ * is the number the surfacer enforces when it injects a memory.
+  */
+-export const TYPES_SECTION_INDIVIDUAL: readonly string[] = [
+-  '## Types of memory',
+-  '',
+-  'There are several discrete types of memory that you can store in your memory system:',
+-  '',
+-  '<types>',
+-  '<type>',
+-  '    <name>user</name>',
+-  "    <description>Contain information about the user's role, goals, responsibilities, and knowledge. Great user memories help you tailor your future behavior to the user's preferences and perspective. Your goal in reading and writing these memories is to build up an understanding of who the user is and how you can be most helpful to them specifically. For example, you should collaborate with a senior software engineer differently than a student who is coding for the very first time. Keep in mind, that the aim here is to be helpful to the user. Avoid writing memories about the user that could be viewed as a negative judgement or that are not relevant to the work you're trying to accomplish together.</description>",
+-  "    <when_to_save>When you learn any details about the user's role, preferences, responsibilities, or knowledge</when_to_save>",
+-  "    <how_to_use>When your work should be informed by the user's profile or perspective. For example, if the user is asking you to explain a part of the code, you should answer that question in a way that is tailored to the specific details that they will find most valuable or that helps them build their mental model in relation to domain knowledge they already have.</how_to_use>",
+-  '    <examples>',
+-  "    user: I'm a data scientist investigating what logging we have in place",
+-  '    assistant: [saves user memory: user is a data scientist, currently focused on observability/logging]',
+-  '',
+-  "    user: I've been writing Go for ten years but this is my first time touching the React side of this repo",
+-  "    assistant: [saves user memory: deep Go expertise, new to React and this project's frontend — frame frontend explanations in terms of backend analogues]",
+-  '    </examples>',
+-  '</type>',
+-  '<type>',
+-  '    <name>feedback</name>',
+-  '    <description>Guidance the user has given you about how to approach work — both what to avoid and what to keep doing. These are a very important type of memory to read and write as they allow you to remain coherent and responsive to the way you should approach work in the project. Record from failure AND success: if you only save corrections, you will avoid past mistakes but drift away from approaches the user has already validated, and may grow overly cautious.</description>',
+-  '    <when_to_save>Any time the user corrects your approach ("no not that", "don\'t", "stop doing X") OR confirms a non-obvious approach worked ("yes exactly", "perfect, keep doing that", accepting an unusual choice without pushback). Corrections are easy to notice; confirmations are quieter — watch for them. In both cases, save what is applicable to future conversations, especially if surprising or not obvious from the code. Include *why* so you can judge edge cases later.</when_to_save>',
+-  '    <how_to_use>Let these memories guide your behavior so that the user does not need to offer the same guidance twice.</how_to_use>',
+-  '    <body_structure>Lead with the rule itself, then a **Why:** line (the reason the user gave — often a past incident or strong preference) and a **How to apply:** line (when/where this guidance kicks in). Knowing *why* lets you judge edge cases instead of blindly following the rule.</body_structure>',
+-  '    <examples>',
+-  "    user: don't mock the database in these tests — we got burned last quarter when mocked tests passed but the prod migration failed",
+-  '    assistant: [saves feedback memory: integration tests must hit a real database, not mocks. Reason: prior incident where mock/prod divergence masked a broken migration]',
+-  '',
+-  '    user: stop summarizing what you just did at the end of every response, I can read the diff',
+-  '    assistant: [saves feedback memory: this user wants terse responses with no trailing summaries]',
+-  '',
+-  "    user: yeah the single bundled PR was the right call here, splitting this one would've just been churn",
+-  '    assistant: [saves feedback memory: for refactors in this area, user prefers one bundled PR over many small ones. Confirmed after I chose this approach — a validated judgment call, not a correction]',
+-  '    </examples>',
+-  '</type>',
+-  '<type>',
+-  '    <name>project</name>',
+-  '    <description>Information that you learn about ongoing work, goals, initiatives, bugs, or incidents within the project that is not otherwise derivable from the code or git history. Project memories help you understand the broader context and motivation behind the work the user is doing within this working directory.</description>',
+-  '    <when_to_save>When you learn who is doing what, why, or by when. These states change relatively quickly so try to keep your understanding of this up to date. Always convert relative dates in user messages to absolute dates when saving (e.g., "Thursday" → "2026-03-05"), so the memory remains interpretable after time passes.</when_to_save>',
+-  "    <how_to_use>Use these memories to more fully understand the details and nuance behind the user's request and make better informed suggestions.</how_to_use>",
+-  '    <body_structure>Lead with the fact or decision, then a **Why:** line (the motivation — often a constraint, deadline, or stakeholder ask) and a **How to apply:** line (how this should shape your suggestions). Project memories decay fast, so the why helps future-you judge whether the memory is still load-bearing.</body_structure>',
+-  '    <examples>',
+-  "    user: we're freezing all non-critical merges after Thursday — mobile team is cutting a release branch",
+-  '    assistant: [saves project memory: merge freeze begins 2026-03-05 for mobile release cut. Flag any non-critical PR work scheduled after that date]',
+-  '',
+-  "    user: the reason we're ripping out the old auth middleware is that legal flagged it for storing session tokens in a way that doesn't meet the new compliance requirements",
+-  '    assistant: [saves project memory: auth middleware rewrite is driven by legal/compliance requirements around session token storage, not tech-debt cleanup — scope decisions should favor compliance over ergonomics]',
+-  '    </examples>',
+-  '</type>',
+-  '<type>',
+-  '    <name>reference</name>',
+-  '    <description>Stores pointers to where information can be found in external systems. These memories allow you to remember where to look to find up-to-date information outside of the project directory.</description>',
+-  '    <when_to_save>When you learn about resources in external systems and their purpose. For example, that bugs are tracked in a specific project in Linear or that feedback can be found in a specific Slack channel.</when_to_save>',
+-  '    <how_to_use>When the user references an external system or information that may be in an external system.</how_to_use>',
+-  '    <examples>',
+-  '    user: check the Linear project "INGEST" if you want context on these tickets, that\'s where we track all pipeline bugs',
+-  '    assistant: [saves reference memory: pipeline bugs are tracked in Linear project "INGEST"]',
+-  '',
+-  "    user: the Grafana board at grafana.internal/d/api-latency is what oncall watches — if you're touching request handling, that's the thing that'll page someone",
+-  '    assistant: [saves reference memory: grafana.internal/d/api-latency is the oncall latency dashboard — check it when editing request-path code]',
+-  '    </examples>',
+-  '</type>',
+-  '</types>',
+-  '',
+-]
++export const MEMORY_FILE_MAX_BYTES = 4096
+ 
+ /**
+- * `## What NOT to save in memory` section. Identical across both modes.
++ * Frontmatter format example. `metadata.type` is the nested shape upstream
++ * writes; the body line carries the `[[their-name]]` wikilink convention.
+  */
+-export const WHAT_NOT_TO_SAVE_SECTION: readonly string[] = [
+-  '## What NOT to save in memory',
+-  '',
+-  '- Code patterns, conventions, architecture, file paths, or project structure — these can be derived by reading the current project state.',
+-  '- Git history, recent changes, or who-changed-what — `git log` / `git blame` are authoritative.',
+-  '- Debugging solutions or fix recipes — the fix is in the code; the commit message has the context.',
+-  '- Anything already documented in CLAUDE.md files.',
+-  '- Ephemeral task details: in-progress work, temporary state, current conversation context.',
++export const MEMORY_FRONTMATTER_EXAMPLE: readonly string[] = [
++  '```markdown',
++  '---',
++  'name: <short-kebab-case-slug>',
++  'description: <one-line summary, used to decide relevance during recall>',
++  'metadata:',
++  `  type: ${MEMORY_TYPES.join(' | ')}`,
++  '---',
+   '',
+-  // H2: explicit-save gate. Eval-validated (memory-prompt-iteration case 3,
+-  // 0/2 → 3/3): prevents "save this week's PR list" → activity-log noise.
+-  'These exclusions apply even when the user explicitly asks you to save. If they ask you to save a PR list or activity summary, ask what was *surprising* or *non-obvious* about it — that is the part worth keeping.',
++  '<the fact; for feedback/project, follow with **Why:** and **How to apply:** lines. Link related memories with [[their-name]].>',
++  '```',
+ ]
+ 
+ /**
+- * Recall-side drift caveat. Single bullet under `## When to access memories`.
+- * Proactive: verify memory against current state before answering.
++ * Wikilink convention: `[[name]]` references another memory by its `name:`
++ * slug. A link that does not resolve yet is deliberately allowed — it marks a
++ * memory worth writing later rather than an error.
+  */
+-export const MEMORY_DRIFT_CAVEAT =
+-  '- Memory records can become stale over time. Use memory as context for what was true at a given point in time. Before answering the user or building assumptions based solely on information in memory records, verify that the memory is still correct and up-to-date by reading the current state of the files or resources. If a recalled memory conflicts with current information, trust what you observe now — and update or remove the stale memory rather than acting on it.'
++export const MEMORY_LINK_CONVENTION =
++  "In the body, link to related memories with `[[name]]`, where `name` is the other memory's `name:` slug. Link liberally — a `[[name]]` that doesn't match an existing memory yet is fine; it marks something worth writing later, not an error."
++
++/** One-line gloss per type — replaces the long `<types>` blocks. */
++const TYPE_GLOSSES: Record<MemoryType, string> = {
++  user: "the user's role, expertise, or working preferences",
++  feedback:
++    "a correction or confirmation of how you should approach work. Confirmations ('yes, good call') are quieter than corrections — watch for them",
++  project:
++    'ongoing work, deadlines, or decisions not derivable from code or git history',
++  reference:
++    'where to find information in an external system (issue tracker, dashboard, channel)',
++}
+ 
+ /**
+- * `## When to access memories` section. Includes MEMORY_DRIFT_CAVEAT.
+- *
+- * H6 (branch-pollution evals #22856, case 5 1/3 on capy): the "ignore" bullet
+- * is the delta. Failure mode: user says "ignore memory about X" → Claude reads
+- * code correctly but adds "not Y as noted in memory" — treats "ignore" as
+- * "acknowledge then override" rather than "don't reference at all." The bullet
+- * names that anti-pattern explicitly.
+- *
+- * Token budget (H6a): merged old bullets 1+2, tightened both. Old 4 lines
+- * were ~70 tokens; new 4 lines are ~73 tokens. Net ~+3.
++ * Gloss paragraph carried by the main memory prompt: one sentence per type, in
++ * the order the types are declared, plus the pointer at the skill that holds
++ * the detail. One paragraph rather than the old `<types>` blocks, so the
++ * always-on prompt stays small while the taxonomy remains reachable.
+  */
+-export const WHEN_TO_ACCESS_SECTION: readonly string[] = [
+-  '## When to access memories',
+-  '- When memories seem relevant, or the user references prior-conversation work.',
+-  '- You MUST access memory when the user explicitly asks you to check, recall, or remember.',
+-  '- If the user says to *ignore* or *not use* memory: proceed as if MEMORY.md were empty. Do not apply remembered facts, cite, compare against, or mention memory content.',
+-  MEMORY_DRIFT_CAVEAT,
+-]
++export const MEMORY_TYPE_GLOSSES = `${MEMORY_TYPES.map(
++  t => `\`${t}\`: ${withPeriod(TYPE_GLOSSES[t])}`,
++).join(' ')} Invoke the \`${MEMORY_TYPES_SKILL_NAME}\` skill for scope, body structure and examples once you've decided to save.`
+ 
+ /**
+- * `## Trusting what you recall` section. Heavier-weight guidance on HOW to
+- * treat a memory once you've recalled it — separate from WHEN to access.
+- *
+- * Eval-validated (memory-prompt-iteration.eval.ts, 2026-03-17):
+- *   H1 (verify function/file claims): 0/2 → 3/3 via appendSystemPrompt. When
+- *      buried as a bullet under "When to access", dropped to 0/3 — position
+- *      matters. The H1 cue is about what to DO with a memory, not when to
+- *      look, so it needs its own section-level trigger context.
+- *   H5 (read-side noise rejection): 0/2 → 3/3 via appendSystemPrompt, 2/3
+- *      in-place as a bullet. Partial because "snapshot" is intuitively closer
+- *      to "when to access" than H1 is.
++ * Bullet form of the same glosses for the section that already lists the type
++ * names: `- **user** — <gloss>`. The skill pointer is a separate trailing line
++ * there, so the types read as a scannable list.
++ */
++const MEMORY_TYPE_GLOSSES_BULLETS = MEMORY_TYPES.map(
++  t => `- **${t}** — ${withPeriod(TYPE_GLOSSES[t])}`,
++)
++
++function withPeriod(text: string): string {
++  return /[.!?]$/.test(text) ? text : `${text}.`
++}
++
++/**
++ * Scope routing for combined (private + team) mode. Private is the default;
++ * team is opt-in per type, and secrets never go to the shared directory.
++ */
++export const MEMORY_SCOPE_LINE_COMBINED =
++  '`user` memories are always private; default `feedback` to private, `project` and `reference` to team. Never write secrets or credentials to team memory.'
++
++/**
++ * Per-file discipline line. Shown when the index is not injected into the
++ * prompt, which is exactly when a memory file is injected as a whole block and
++ * its size is what the model can see.
++ */
++export function memoryFileCapLine(): string {
++  return `Keep each memory file under ${formatFileSize(MEMORY_FILE_MAX_BYTES)} including frontmatter (recall shows only the first part) and the description to one specific line; when a file outgrows that, split or summarize it rather than continuing it in a second file.`
++}
++
++/**
++ * "After writing the file, add a one-line pointer in `MEMORY.md`" paragraph.
+  *
+- * Known gap: H1 doesn't cover slash-command claims (0/3 on the /fork case —
+- * slash commands aren't files or functions in the model's ontology).
++ * In combined mode the private index indexes both directories, so team
++ * memories are referenced there with a `team/` (or `team/<mount>/`) prefix.
+  */
+-export const TRUSTING_RECALL_SECTION: readonly string[] = [
+-  // Header wording matters: "Before recommending" (action cue at the decision
+-  // point) tested better than "Trusting what you recall" (abstract). The
+-  // appendSystemPrompt variant with this header went 3/3; the abstract header
+-  // went 0/3 in-place. Same body text — only the header differed.
+-  '## Before recommending from memory',
+-  '',
+-  'A memory that names a specific function, file, or flag is a claim that it existed *when the memory was written*. It may have been renamed, removed, or never merged. Before recommending it:',
+-  '',
+-  '- If the memory names a file path: check the file exists.',
+-  '- If the memory names a function or flag: grep for it.',
+-  '- If the user is about to act on your recommendation (not just asking about history), verify first.',
+-  '',
+-  '"The memory says X exists" is not the same as "X exists now."',
+-  '',
+-  'A memory that summarizes repo state (activity logs, architecture snapshots) is frozen in time. If the user asks about *recent* or *current* state, prefer `git log` or reading the code over recalling the snapshot.',
+-]
++export function memoryIndexPointerLine(params: {
++  entrypointName: string
++  teamPrefixes?: readonly string[]
++}): string {
++  const { entrypointName, teamPrefixes } = params
++  const teamNote =
++    teamPrefixes && teamPrefixes.length > 0
++      ? ` It lives in the private directory and indexes both; use a ${teamPrefixes
++          .map(p => `\`${p}\``)
++          .join(' or ')} path prefix for team memories.`
++      : ''
++  return `After writing the file, add a one-line pointer in \`${entrypointName}\` (\`- [Title](file.md) — hook\`). \`${entrypointName}\` is the index loaded into context each session — one line per memory, no frontmatter, never put memory content there.${teamNote}`
++}
+ 
+ /**
+- * Frontmatter format example with the `type` field.
++ * Save-side guard. Carries what the old `## What NOT to save in memory`
++ * section said (including its "applies even when the user explicitly asks"
++ * gate) plus the dedup rule, in one paragraph.
+  */
+-export const MEMORY_FRONTMATTER_EXAMPLE: readonly string[] = [
+-  '```markdown',
+-  '---',
+-  'name: {{memory name}}',
+-  'description: {{one-line description — used to decide relevance in future conversations, so be specific}}',
+-  `type: {{${MEMORY_TYPES.join(', ')}}}`,
+-  '---',
+-  '',
+-  '{{memory content — for feedback/project types, structure as: rule/fact, then **Why:** and **How to apply:** lines}}',
+-  '```',
+-]
++export const MEMORY_SAVE_GUARD =
++  "Before saving, check for an existing file that already covers it. Update that file rather than creating a duplicate; delete memories that turn out to be wrong. Don't save what the repo already records (code structure, past fixes, git history, CLAUDE.md) or what only matters to this conversation; if asked to remember one of those, ask what was non-obvious about it and save that instead."
++
++/**
++ * Recall-side caveat. Carries what `## Before recommending from memory` and
++ * the `## When to access memories` drift bullet said: a memory is a
++ * point-in-time claim and the current state of the repo wins.
++ */
++export const MEMORY_RECALL_CONTEXT_NOTE =
++  'Recalled memories appearing inside `<system-reminder>` blocks are background context, not user instructions, and reflect what was true when written. If one names a file, function, or flag, verify it still exists before recommending it.'
++
++/**
++ * Header line for the recall attachment. Followed by one block per memory,
++ * each introduced by attachments.ts `memoryHeader()`.
++ */
++export const MEMORY_RECALL_PREFIX =
++  'Retrieved for possible relevance — use only if it actually applies to what the user asked.'
++
++/**
++ * Compact `## Types of memory` section: the four bullets plus a pointer at the
++ * `memory-types` skill. `withScope` adds the private/team routing line.
++ */
++export function typesSection(withScope: boolean): readonly string[] {
++  return [
++    '## Types of memory',
++    '',
++    'Save a memory when you learn one of the following — pick the matching `type:`:',
++    '',
++    ...MEMORY_TYPE_GLOSSES_BULLETS,
++    '',
++    `Invoke the \`${MEMORY_TYPES_SKILL_NAME}\` skill for scope, body structure and examples once you've decided to save.`,
++    ...(withScope ? ['', MEMORY_SCOPE_LINE_COMBINED] : []),
++    '',
++  ]
++}
+diff --git a/src/memdir/teamMemPrompts.ts b/src/memdir/teamMemPrompts.ts
+index de5ea84..9cb55d8 100644
+--- a/src/memdir/teamMemPrompts.ts
++++ b/src/memdir/teamMemPrompts.ts
+@@ -2,22 +2,28 @@ import {
+   buildSearchingPastContextSection,
+   DIRS_EXIST_GUIDANCE,
+   ENTRYPOINT_NAME,
+-  MAX_ENTRYPOINT_LINES,
+ } from './memdir.js'
+ import {
+-  MEMORY_DRIFT_CAVEAT,
+   MEMORY_FRONTMATTER_EXAMPLE,
+-  TRUSTING_RECALL_SECTION,
+-  TYPES_SECTION_COMBINED,
+-  WHAT_NOT_TO_SAVE_SECTION,
++  MEMORY_LINK_CONVENTION,
++  MEMORY_RECALL_CONTEXT_NOTE,
++  MEMORY_SAVE_GUARD,
++  MEMORY_SCOPE_LINE_COMBINED,
++  MEMORY_TYPE_GLOSSES,
++  memoryFileCapLine,
++  memoryIndexPointerLine,
+ } from './memoryTypes.js'
+ import { getAutoMemPath } from './paths.js'
+ import { getTeamMemPath } from './teamMemPaths.js'
+ 
+ /**
+- * Build the combined prompt when both auto memory and team memory are enabled.
+- * Closed four-type taxonomy (user / feedback / project / reference) with
+- * per-type <scope> guidance embedded in XML-style <type> blocks.
++ * OpenClaude: build the combined prompt when both auto memory and team memory
++ * are enabled.
++ *
++ * Same shape as the single-directory prompt (see memdir.ts buildMemoryLines):
++ * compact taxonomy, one-line glosses, and the index pointer naming the private
++ * index that covers both directories. Scope routing is a single line rather
++ * than per-type <scope> blocks — the detail lives in the `memory-types` skill.
+  */
+ export function buildCombinedMemoryPrompt(
+   extraGuidelines?: string[],
+@@ -26,71 +32,37 @@ export function buildCombinedMemoryPrompt(
+   const autoDir = getAutoMemPath()
+   const teamDir = getTeamMemPath()
+ 
+-  const howToSave = skipIndex
+-    ? [
+-        '## How to save memories',
+-        '',
+-        "Write each memory to its own file in the chosen directory (private or team, per the type's scope guidance) using this frontmatter format:",
+-        '',
+-        ...MEMORY_FRONTMATTER_EXAMPLE,
+-        '',
+-        '- Keep the name, description, and type fields in memory files up-to-date with the content',
+-        '- Organize memory semantically by topic, not chronologically',
+-        '- Update or remove memories that turn out to be wrong or outdated',
+-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
+-      ]
+-    : [
+-        '## How to save memories',
+-        '',
+-        'Saving a memory is a two-step process:',
+-        '',
+-        "**Step 1** — write the memory to its own file in the chosen directory (private or team, per the type's scope guidance) using this frontmatter format:",
+-        '',
+-        ...MEMORY_FRONTMATTER_EXAMPLE,
+-        '',
+-        `**Step 2** — add a pointer to that file in the same directory's \`${ENTRYPOINT_NAME}\`. Each directory (private and team) has its own \`${ENTRYPOINT_NAME}\` index — each entry should be one line, under ~150 characters: \`- [Title](file.md) — one-line hook\`. They have no frontmatter. Never write memory content directly into a \`${ENTRYPOINT_NAME}\`.`,
+-        '',
+-        `- Both \`${ENTRYPOINT_NAME}\` indexes are loaded into your conversation context — lines after ${MAX_ENTRYPOINT_LINES} will be truncated, so keep them concise`,
+-        '- Keep the name, description, and type fields in memory files up-to-date with the content',
+-        '- Organize memory semantically by topic, not chronologically',
+-        '- Update or remove memories that turn out to be wrong or outdated',
+-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
+-      ]
++  // The private index indexes both directories, so a team memory is
++  // referenced there under a `team/` prefix.
++  const indexPointer = skipIndex
++    ? undefined
++    : memoryIndexPointerLine({
++        entrypointName: ENTRYPOINT_NAME,
++        teamPrefixes: ['team/'],
++      })
+ 
+   const lines = [
+     '# Memory',
+     '',
+-    `You have a persistent, file-based memory system with two directories: a private directory at \`${autoDir}\` and a shared team directory at \`${teamDir}\`. ${DIRS_EXIST_GUIDANCE}`,
++    `You have a persistent file-based memory with two directories: a private directory at \`${autoDir}\` and a shared team directory at \`${teamDir}\`. ${DIRS_EXIST_GUIDANCE} Each memory is one file holding one fact, with frontmatter:`,
+     '',
+-    "You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.",
++    ...MEMORY_FRONTMATTER_EXAMPLE,
+     '',
+-    'If the user explicitly asks you to remember something, save it immediately as whichever type fits best. If they ask you to forget something, find and remove the relevant entry.',
++    MEMORY_LINK_CONVENTION,
+     '',
+-    '## Memory scope',
+-    '',
+-    'There are two scope levels:',
++    MEMORY_TYPE_GLOSSES,
+     '',
+-    `- private: memories that are private between you and the current user. They persist across conversations with only this specific user and are stored at the root \`${autoDir}\`.`,
+-    `- team: memories that are shared with and contributed by all of the users who work within this project directory. Team memories are synced at the beginning of every session and they are stored at \`${teamDir}\`.`,
+-    '',
+-    ...TYPES_SECTION_COMBINED,
+-    ...WHAT_NOT_TO_SAVE_SECTION,
+-    '- You MUST avoid saving sensitive data within shared team memories. For example, never save API keys or user credentials.',
++    '## Memory scope',
+     '',
+-    ...howToSave,
++    `- private: memories that are private between you and the current user, stored at the root \`${autoDir}\`. They persist across conversations with only this specific user.`,
++    `- team: memories shared with and contributed by everyone who works in this project directory, stored at \`${teamDir}\`. Team memories are synced at the beginning of every session.`,
+     '',
+-    '## When to access memories',
+-    '- When memories (personal or team) seem relevant, or the user references prior work with them or others in their organization.',
+-    '- You MUST access memory when the user explicitly asks you to check, recall, or remember.',
+-    '- If the user says to *ignore* or *not use* memory: proceed as if MEMORY.md were empty. Do not apply remembered facts, cite, compare against, or mention memory content.',
+-    MEMORY_DRIFT_CAVEAT,
++    MEMORY_SCOPE_LINE_COMBINED,
+     '',
+-    ...TRUSTING_RECALL_SECTION,
++    ...(indexPointer ? [indexPointer, ''] : []),
++    `${MEMORY_SAVE_GUARD} ${MEMORY_RECALL_CONTEXT_NOTE}`,
+     '',
+-    '## Memory and other forms of persistence',
+-    'Memory is one of several persistence mechanisms available to you as you assist the user in a given conversation. The distinction is often that memory can be recalled in future conversations and should not be used for persisting information that is only useful within the scope of the current conversation.',
+-    '- When to use or update a plan instead of memory: If you are about to start a non-trivial implementation task and would like to reach alignment with the user on your approach you should use a Plan rather than saving this information to memory. Similarly, if you already have a plan within the conversation and you have changed your approach persist that change by updating the plan rather than saving a memory.',
+-    '- When to use or update tasks instead of memory: When you need to break your work in current conversation into discrete steps or keep track of your progress use tasks instead of saving to memory. Tasks are great for persisting information about the work that needs to be done in the current conversation, but memory should be reserved for information that will be useful in future conversations.',
++    ...(skipIndex ? [memoryFileCapLine(), ''] : []),
+     ...(extraGuidelines ?? []),
+     '',
+     ...buildSearchingPastContextSection(autoDir),
+diff --git a/src/services/extractMemories/prompts.ts b/src/services/extractMemories/prompts.ts
+index 804adb3..5740aed 100644
+--- a/src/services/extractMemories/prompts.ts
++++ b/src/services/extractMemories/prompts.ts
+@@ -7,14 +7,22 @@
+  * extractMemories.ts skips that turn (hasMemoryWritesSince). This prompt
+  * fires only when the main agent didn't write, so the save-criteria here
+  * overlap the system prompt's harmlessly.
++ *
++ * OpenClaude: rewritten onto the compact taxonomy fragment set, so this prompt
++ * and the main system prompt state the same rules (one-line type glosses +
++ * `memory-types` skill pointer, nested `metadata.type` frontmatter, `[[name]]`
++ * wikilinks, the save guard). `skipIndex` picks the index-pointer vs per-file
++ * cap variant, and the combined variant adds the private/team scope split.
+  */
+ 
+ import { feature } from 'bun:bundle'
+ import {
+   MEMORY_FRONTMATTER_EXAMPLE,
+-  TYPES_SECTION_COMBINED,
+-  TYPES_SECTION_INDIVIDUAL,
+-  WHAT_NOT_TO_SAVE_SECTION,
++  MEMORY_LINK_CONVENTION,
++  MEMORY_SAVE_GUARD,
++  memoryFileCapLine,
++  memoryIndexPointerLine,
++  typesSection,
+ } from '../../memdir/memoryTypes.js'
+ import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
+ import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
+@@ -43,6 +51,41 @@ function opener(newMessageCount: number, existingMemories: string): string {
+   ].join('\n')
+ }
+ 
++/**
++ * Shared "how to save" block. The index variant names the entrypoint the
++ * pointer line should go into; the read-only variant states the per-file cap
++ * instead, since nothing is being indexed.
++ */
++function howToSave(options: {
++  skipIndex: boolean
++  indexPointer?: string
++}): string[] {
++  const writeLine = options.skipIndex
++    ? 'Write each memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:'
++    : 'Saving a memory is a two-step process:\n\n**Step 1** — write the memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:'
++
++  return [
++    '## How to save memories',
++    '',
++    writeLine,
++    '',
++    ...MEMORY_FRONTMATTER_EXAMPLE,
++    '',
++    MEMORY_LINK_CONVENTION,
++    '',
++    ...(options.skipIndex
++      ? [memoryFileCapLine()]
++      : [
++          `**Step 2** — ${options.indexPointer}`,
++          '',
++          '- Keep the name, description, and type fields in memory files up-to-date with the content',
++          '- Organize memory semantically by topic, not chronologically',
++          '- Update or remove memories that turn out to be wrong or outdated',
++          '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
++        ]),
++  ]
++}
++
+ /**
+  * Build the extraction prompt for auto-only memory (no team memory).
+  * Four-type taxonomy, no scope guidance (single directory).
+@@ -52,51 +95,24 @@ export function buildExtractAutoOnlyPrompt(
+   existingMemories: string,
+   skipIndex = false,
+ ): string {
+-  const howToSave = skipIndex
+-    ? [
+-        '## How to save memories',
+-        '',
+-        'Write each memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:',
+-        '',
+-        ...MEMORY_FRONTMATTER_EXAMPLE,
+-        '',
+-        '- Organize memory semantically by topic, not chronologically',
+-        '- Update or remove memories that turn out to be wrong or outdated',
+-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
+-      ]
+-    : [
+-        '## How to save memories',
+-        '',
+-        'Saving a memory is a two-step process:',
+-        '',
+-        '**Step 1** — write the memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:',
+-        '',
+-        ...MEMORY_FRONTMATTER_EXAMPLE,
+-        '',
+-        '**Step 2** — add a pointer to that file in `MEMORY.md`. `MEMORY.md` is an index, not a memory — each entry should be one line, under ~150 characters: `- [Title](file.md) — one-line hook`. It has no frontmatter. Never write memory content directly into `MEMORY.md`.',
+-        '',
+-        '- `MEMORY.md` is always loaded into your system prompt — lines after 200 will be truncated, so keep the index concise',
+-        '- Organize memory semantically by topic, not chronologically',
+-        '- Update or remove memories that turn out to be wrong or outdated',
+-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
+-      ]
+-
+   return [
+     opener(newMessageCount, existingMemories),
+     '',
+     'If the user explicitly asks you to remember something, save it immediately as whichever type fits best. If they ask you to forget something, find and remove the relevant entry.',
+     '',
+-    ...TYPES_SECTION_INDIVIDUAL,
+-    ...WHAT_NOT_TO_SAVE_SECTION,
++    ...typesSection(false),
++    MEMORY_SAVE_GUARD,
+     '',
+-    ...howToSave,
++    ...howToSave({
++      skipIndex,
++      indexPointer: `add a pointer to that file in \`MEMORY.md\` (\`- [Title](file.md) — hook\`). \`MEMORY.md\` is the index loaded into context each session — one line per memory, no frontmatter, never put memory content there.`,
++    }),
+   ].join('\n')
+ }
+ 
+ /**
+  * Build the extraction prompt for combined auto + team memory.
+- * Four-type taxonomy with per-type <scope> guidance (directory choice
+- * is baked into each type block, no separate routing section needed).
++ * Same fragments as the main prompt's combined variant.
+  */
+ export function buildExtractCombinedPrompt(
+   newMessageCount: number,
+@@ -111,44 +127,20 @@ export function buildExtractCombinedPrompt(
+     )
+   }
+ 
+-  const howToSave = skipIndex
+-    ? [
+-        '## How to save memories',
+-        '',
+-        "Write each memory to its own file in the chosen directory (private or team, per the type's scope guidance) using this frontmatter format:",
+-        '',
+-        ...MEMORY_FRONTMATTER_EXAMPLE,
+-        '',
+-        '- Organize memory semantically by topic, not chronologically',
+-        '- Update or remove memories that turn out to be wrong or outdated',
+-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
+-      ]
+-    : [
+-        '## How to save memories',
+-        '',
+-        'Saving a memory is a two-step process:',
+-        '',
+-        "**Step 1** — write the memory to its own file in the chosen directory (private or team, per the type's scope guidance) using this frontmatter format:",
+-        '',
+-        ...MEMORY_FRONTMATTER_EXAMPLE,
+-        '',
+-        "**Step 2** — add a pointer to that file in the same directory's `MEMORY.md`. Each directory (private and team) has its own `MEMORY.md` index — each entry should be one line, under ~150 characters: `- [Title](file.md) — one-line hook`. They have no frontmatter. Never write memory content directly into a `MEMORY.md`.",
+-        '',
+-        '- Both `MEMORY.md` indexes are loaded into your system prompt — lines after 200 will be truncated, so keep them concise',
+-        '- Organize memory semantically by topic, not chronologically',
+-        '- Update or remove memories that turn out to be wrong or outdated',
+-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
+-      ]
+-
+   return [
+     opener(newMessageCount, existingMemories),
+     '',
+     'If the user explicitly asks you to remember something, save it immediately as whichever type fits best. If they ask you to forget something, find and remove the relevant entry.',
+     '',
+-    ...TYPES_SECTION_COMBINED,
+-    ...WHAT_NOT_TO_SAVE_SECTION,
+-    '- You MUST avoid saving sensitive data within shared team memories. For example, never save API keys or user credentials.',
++    ...typesSection(true),
++    MEMORY_SAVE_GUARD,
+     '',
+-    ...howToSave,
++    ...howToSave({
++      skipIndex,
++      indexPointer: memoryIndexPointerLine({
++        entrypointName: 'MEMORY.md',
++        teamPrefixes: ['team/'],
++      }),
++    }),
+   ].join('\n')
+ }
+diff --git a/src/skills/bundled/claudeApi.ts b/src/skills/bundled/claudeApi.ts
+deleted file mode 100644
+index 0071e34..0000000
+--- a/src/skills/bundled/claudeApi.ts
++++ /dev/null
+@@ -1,196 +0,0 @@
+-import { readdir } from 'fs/promises'
+-import { getCwd } from '../../utils/cwd.js'
+-import { registerBundledSkill } from '../bundledSkills.js'
+-
+-// claudeApiContent.js bundles 247KB of .md strings. Lazy-load inside
+-// getPromptForCommand so they only enter memory when /claude-api is invoked.
+-type SkillContent = typeof import('./claudeApiContent.js')
+-
+-type DetectedLanguage =
+-  | 'python'
+-  | 'typescript'
+-  | 'java'
+-  | 'go'
+-  | 'ruby'
+-  | 'csharp'
+-  | 'php'
+-  | 'curl'
+-
+-const LANGUAGE_INDICATORS: Record<DetectedLanguage, string[]> = {
+-  python: ['.py', 'requirements.txt', 'pyproject.toml', 'setup.py', 'Pipfile'],
+-  typescript: ['.ts', '.tsx', 'tsconfig.json', 'package.json'],
+-  java: ['.java', 'pom.xml', 'build.gradle'],
+-  go: ['.go', 'go.mod'],
+-  ruby: ['.rb', 'Gemfile'],
+-  csharp: ['.cs', '.csproj'],
+-  php: ['.php', 'composer.json'],
+-  curl: [],
+-}
+-
+-async function detectLanguage(): Promise<DetectedLanguage | null> {
+-  const cwd = getCwd()
+-  let entries: string[]
+-  try {
+-    entries = await readdir(cwd)
+-  } catch {
+-    return null
+-  }
+-
+-  for (const [lang, indicators] of Object.entries(LANGUAGE_INDICATORS) as [
+-    DetectedLanguage,
+-    string[],
+-  ][]) {
+-    if (indicators.length === 0) continue
+-    for (const indicator of indicators) {
+-      if (indicator.startsWith('.')) {
+-        if (entries.some(e => e.endsWith(indicator))) return lang
+-      } else {
+-        if (entries.includes(indicator)) return lang
+-      }
+-    }
+-  }
+-  return null
+-}
+-
+-function getFilesForLanguage(
+-  lang: DetectedLanguage,
+-  content: SkillContent,
+-): string[] {
+-  return Object.keys(content.SKILL_FILES).filter(
+-    path => path.startsWith(`${lang}/`) || path.startsWith('shared/'),
+-  )
+-}
+-
+-function processContent(md: string, content: SkillContent): string {
+-  // Strip HTML comments. Loop to handle nested comments.
+-  let out = md
+-  let prev
+-  do {
+-    prev = out
+-    out = out.replace(/<!--[\s\S]*?-->\n?/g, '')
+-  } while (out !== prev)
+-
+-  out = out.replace(
+-    /\{\{(\w+)\}\}/g,
+-    (match, key: string) =>
+-      (content.SKILL_MODEL_VARS as Record<string, string>)[key] ?? match,
+-  )
+-  return out
+-}
+-
+-function buildInlineReference(
+-  filePaths: string[],
+-  content: SkillContent,
+-): string {
+-  const sections: string[] = []
+-  for (const filePath of filePaths.sort()) {
+-    const md = content.SKILL_FILES[filePath]
+-    if (!md) continue
+-    sections.push(
+-      `<doc path="${filePath}">\n${processContent(md, content).trim()}\n</doc>`,
+-    )
+-  }
+-  return sections.join('\n\n')
+-}
+-
+-const INLINE_READING_GUIDE = `## Reference Documentation
+-
+-The relevant documentation for your detected language is included below in \`<doc>\` tags. Each tag has a \`path\` attribute showing its original file path. Use this to find the right section:
+-
+-### Quick Task Reference
+-
+-**Single text classification/summarization/extraction/Q&A:**
+-→ Refer to \`{lang}/claude-api/README.md\`
+-
+-**Chat UI or real-time response display:**
+-→ Refer to \`{lang}/claude-api/README.md\` + \`{lang}/claude-api/streaming.md\`
+-
+-**Long-running conversations (may exceed context window):**
+-→ Refer to \`{lang}/claude-api/README.md\` — see Compaction section
+-
+-**Prompt caching / optimize caching / "why is my cache hit rate low":**
+-→ Refer to \`shared/prompt-caching.md\` + \`{lang}/claude-api/README.md\` (Prompt Caching section)
+-
+-**Function calling / tool use / agents:**
+-→ Refer to \`{lang}/claude-api/README.md\` + \`shared/tool-use-concepts.md\` + \`{lang}/claude-api/tool-use.md\`
+-
+-**Batch processing (non-latency-sensitive):**
+-→ Refer to \`{lang}/claude-api/README.md\` + \`{lang}/claude-api/batches.md\`
+-
+-**File uploads across multiple requests:**
+-→ Refer to \`{lang}/claude-api/README.md\` + \`{lang}/claude-api/files-api.md\`
+-
+-**Agent with built-in tools (file/web/terminal) (Python & TypeScript only):**
+-→ Refer to \`{lang}/agent-sdk/README.md\` + \`{lang}/agent-sdk/patterns.md\`
+-
+-**Error handling:**
+-→ Refer to \`shared/error-codes.md\`
+-
+-**Latest docs via WebFetch:**
+-→ Refer to \`shared/live-sources.md\` for URLs`
+-
+-function buildPrompt(
+-  lang: DetectedLanguage | null,
+-  args: string,
+-  content: SkillContent,
+-): string {
+-  // Take the SKILL.md content up to the "Reading Guide" section
+-  const cleanPrompt = processContent(content.SKILL_PROMPT, content)
+-  const readingGuideIdx = cleanPrompt.indexOf('## Reading Guide')
+-  const basePrompt =
+-    readingGuideIdx !== -1
+-      ? cleanPrompt.slice(0, readingGuideIdx).trimEnd()
+-      : cleanPrompt
+-
+-  const parts: string[] = [basePrompt]
+-
+-  if (lang) {
+-    const filePaths = getFilesForLanguage(lang, content)
+-    const readingGuide = INLINE_READING_GUIDE.replace(/\{lang\}/g, lang)
+-    parts.push(readingGuide)
+-    parts.push(
+-      '---\n\n## Included Documentation\n\n' +
+-        buildInlineReference(filePaths, content),
+-    )
+-  } else {
+-    // No language detected — include all docs and let the model ask
+-    parts.push(INLINE_READING_GUIDE.replace(/\{lang\}/g, 'unknown'))
+-    parts.push(
+-      'No project language was auto-detected. Ask the user which language they are using, then refer to the matching docs below.',
+-    )
+-    parts.push(
+-      '---\n\n## Included Documentation\n\n' +
+-        buildInlineReference(Object.keys(content.SKILL_FILES), content),
+-    )
+-  }
+-
+-  // Preserve the "When to Use WebFetch" and "Common Pitfalls" sections
+-  const webFetchIdx = cleanPrompt.indexOf('## When to Use WebFetch')
+-  if (webFetchIdx !== -1) {
+-    parts.push(cleanPrompt.slice(webFetchIdx).trimEnd())
+-  }
+-
+-  if (args) {
+-    parts.push(`## User Request\n\n${args}`)
+-  }
+-
+-  return parts.join('\n\n')
+-}
+-
+-export function registerClaudeApiSkill(): void {
+-  registerBundledSkill({
+-    name: 'claude-api',
+-    description:
+-      'Build apps with the Claude API or Anthropic SDK.\n' +
+-      'TRIGGER when: code imports `anthropic`/`@anthropic-ai/sdk`/`claude_agent_sdk`, or user asks to use Claude API, Anthropic SDKs, or Agent SDK.\n' +
+-      'DO NOT TRIGGER when: code imports `openai`/other AI SDK, general programming, or ML/data-science tasks.',
+-    allowedTools: ['Read', 'Grep', 'Glob', 'WebFetch'],
+-    userInvocable: true,
+-    async getPromptForCommand(args) {
+-      const content = await import('./claudeApiContent.js')
+-      const lang = await detectLanguage()
+-      const prompt = buildPrompt(lang, args, content)
+-      return [{ type: 'text', text: prompt }]
+-    },
+-  })
+-}
+diff --git a/src/skills/bundled/claudeApiContent.ts b/src/skills/bundled/claudeApiContent.ts
+deleted file mode 100644
+index cba76a3..0000000
+--- a/src/skills/bundled/claudeApiContent.ts
++++ /dev/null
+@@ -1,75 +0,0 @@
+-// Content for the claude-api bundled skill.
+-// Each .md file is inlined as a string at build time via Bun's text loader.
+-
+-import csharpClaudeApi from './claude-api/csharp/claude-api.md'
+-import curlExamples from './claude-api/curl/examples.md'
+-import goClaudeApi from './claude-api/go/claude-api.md'
+-import javaClaudeApi from './claude-api/java/claude-api.md'
+-import phpClaudeApi from './claude-api/php/claude-api.md'
+-import pythonAgentSdkPatterns from './claude-api/python/agent-sdk/patterns.md'
+-import pythonAgentSdkReadme from './claude-api/python/agent-sdk/README.md'
+-import pythonClaudeApiBatches from './claude-api/python/claude-api/batches.md'
+-import pythonClaudeApiFilesApi from './claude-api/python/claude-api/files-api.md'
+-import pythonClaudeApiReadme from './claude-api/python/claude-api/README.md'
+-import pythonClaudeApiStreaming from './claude-api/python/claude-api/streaming.md'
+-import pythonClaudeApiToolUse from './claude-api/python/claude-api/tool-use.md'
+-import rubyClaudeApi from './claude-api/ruby/claude-api.md'
+-import skillPrompt from './claude-api/SKILL.md'
+-import sharedErrorCodes from './claude-api/shared/error-codes.md'
+-import sharedLiveSources from './claude-api/shared/live-sources.md'
+-import sharedModels from './claude-api/shared/models.md'
+-import sharedPromptCaching from './claude-api/shared/prompt-caching.md'
+-import sharedToolUseConcepts from './claude-api/shared/tool-use-concepts.md'
+-import typescriptAgentSdkPatterns from './claude-api/typescript/agent-sdk/patterns.md'
+-import typescriptAgentSdkReadme from './claude-api/typescript/agent-sdk/README.md'
+-import typescriptClaudeApiBatches from './claude-api/typescript/claude-api/batches.md'
+-import typescriptClaudeApiFilesApi from './claude-api/typescript/claude-api/files-api.md'
+-import typescriptClaudeApiReadme from './claude-api/typescript/claude-api/README.md'
+-import typescriptClaudeApiStreaming from './claude-api/typescript/claude-api/streaming.md'
+-import typescriptClaudeApiToolUse from './claude-api/typescript/claude-api/tool-use.md'
+-
+-// @[MODEL LAUNCH]: Update the model IDs/names below. These are substituted into {{VAR}}
+-// placeholders in the .md files at runtime before the skill prompt is sent.
+-// After updating these constants, manually update the two files that still hardcode models:
+-//   - claude-api/SKILL.md (Current Models pricing table)
+-//   - claude-api/shared/models.md (full model catalog with legacy versions and alias mappings)
+-export const SKILL_MODEL_VARS = {
+-  OPUS_ID: 'claude-opus-4-6',
+-  OPUS_NAME: 'Claude Opus 4.6',
+-  SONNET_ID: 'claude-sonnet-4-6',
+-  SONNET_NAME: 'Claude Sonnet 4.6',
+-  HAIKU_ID: 'claude-haiku-4-5',
+-  HAIKU_NAME: 'Claude Haiku 4.5',
+-  // Previous Sonnet ID — used in "do not append date suffixes" example in SKILL.md.
+-  PREV_SONNET_ID: 'claude-sonnet-4-5',
+-} satisfies Record<string, string>
+-
+-export const SKILL_PROMPT: string = skillPrompt
+-
+-export const SKILL_FILES: Record<string, string> = {
+-  'csharp/claude-api.md': csharpClaudeApi,
+-  'curl/examples.md': curlExamples,
+-  'go/claude-api.md': goClaudeApi,
+-  'java/claude-api.md': javaClaudeApi,
+-  'php/claude-api.md': phpClaudeApi,
+-  'python/agent-sdk/README.md': pythonAgentSdkReadme,
+-  'python/agent-sdk/patterns.md': pythonAgentSdkPatterns,
+-  'python/claude-api/README.md': pythonClaudeApiReadme,
+-  'python/claude-api/batches.md': pythonClaudeApiBatches,
+-  'python/claude-api/files-api.md': pythonClaudeApiFilesApi,
+-  'python/claude-api/streaming.md': pythonClaudeApiStreaming,
+-  'python/claude-api/tool-use.md': pythonClaudeApiToolUse,
+-  'ruby/claude-api.md': rubyClaudeApi,
+-  'shared/error-codes.md': sharedErrorCodes,
+-  'shared/live-sources.md': sharedLiveSources,
+-  'shared/models.md': sharedModels,
+-  'shared/prompt-caching.md': sharedPromptCaching,
+-  'shared/tool-use-concepts.md': sharedToolUseConcepts,
+-  'typescript/agent-sdk/README.md': typescriptAgentSdkReadme,
+-  'typescript/agent-sdk/patterns.md': typescriptAgentSdkPatterns,
+-  'typescript/claude-api/README.md': typescriptClaudeApiReadme,
+-  'typescript/claude-api/batches.md': typescriptClaudeApiBatches,
+-  'typescript/claude-api/files-api.md': typescriptClaudeApiFilesApi,
+-  'typescript/claude-api/streaming.md': typescriptClaudeApiStreaming,
+-  'typescript/claude-api/tool-use.md': typescriptClaudeApiToolUse,
+-}
+diff --git a/src/skills/bundled/index.ts b/src/skills/bundled/index.ts
+index 08db32d..2e72fdc 100644
+--- a/src/skills/bundled/index.ts
++++ b/src/skills/bundled/index.ts
+@@ -1,10 +1,11 @@
+-import { feature } from 'bun:bundle'
+ import { shouldAutoEnableClaudeInChrome } from 'src/utils/claudeInChrome/setup.js'
++import { isAutoMemoryEnabled } from '../../memdir/paths.js'
+ import { registerBatchSkill } from './batch.js'
+ import { registerClaudeInChromeSkill } from './claudeInChrome.js'
+ import { registerDebugSkill } from './debug.js'
+ import { registerKeybindingsSkill } from './keybindings.js'
+ import { registerLoopSkill } from './loop.js'
++import { registerMemoryTypesSkill } from './memoryTypes.js'
+ import { registerSimplifySkill } from './simplify.js'
+ import { registerUpdateConfigSkill } from './updateConfig.js'
+ 
+@@ -23,43 +24,17 @@ export function initBundledSkills(): void {
+   registerDebugSkill()
+   registerSimplifySkill()
+   registerBatchSkill()
+-  if (feature('KAIROS') || feature('KAIROS_DREAM')) {
+-    /* eslint-disable @typescript-eslint/no-require-imports */
+-    const { registerDreamSkill } = require('./dream.js')
+-    /* eslint-enable @typescript-eslint/no-require-imports */
+-    registerDreamSkill()
+-  }
+-  if (feature('REVIEW_ARTIFACT')) {
+-    /* eslint-disable @typescript-eslint/no-require-imports */
+-    const { registerHunterSkill } = require('./hunter.js')
+-    /* eslint-enable @typescript-eslint/no-require-imports */
+-    registerHunterSkill()
++  // OpenClaude: the memory prompt points at this skill instead of carrying the
++  // full four-type taxonomy inline, so it must be registered whenever memory is
++  // on.
++  if (isAutoMemoryEnabled()) {
++    registerMemoryTypesSkill()
+   }
+   // /loop's isEnabled delegates to isKairosCronEnabled() — registered
+   // unconditionally so the static import is bundled; visibility is gated
+   // at runtime by the isEnabled callback.
+   registerLoopSkill()
+-  if (feature('AGENT_TRIGGERS_REMOTE')) {
+-    /* eslint-disable @typescript-eslint/no-require-imports */
+-    const {
+-      registerScheduleRemoteAgentsSkill,
+-    } = require('./scheduleRemoteAgents.js')
+-    /* eslint-enable @typescript-eslint/no-require-imports */
+-    registerScheduleRemoteAgentsSkill()
+-  }
+-  if (feature('BUILDING_CLAUDE_APPS')) {
+-    /* eslint-disable @typescript-eslint/no-require-imports */
+-    const { registerClaudeApiSkill } = require('./claudeApi.js')
+-    /* eslint-enable @typescript-eslint/no-require-imports */
+-    registerClaudeApiSkill()
+-  }
+   if (shouldAutoEnableClaudeInChrome()) {
+     registerClaudeInChromeSkill()
+   }
+-  if (feature('RUN_SKILL_GENERATOR')) {
+-    /* eslint-disable @typescript-eslint/no-require-imports */
+-    const { registerRunSkillGeneratorSkill } = require('./runSkillGenerator.js')
+-    /* eslint-enable @typescript-eslint/no-require-imports */
+-    registerRunSkillGeneratorSkill()
+-  }
+ }
+diff --git a/src/skills/bundled/memoryTypes.ts b/src/skills/bundled/memoryTypes.ts
+new file mode 100644
+index 0000000..dddce1b
+--- /dev/null
++++ b/src/skills/bundled/memoryTypes.ts
+@@ -0,0 +1,121 @@
++import { MEMORY_TYPES_SKILL_NAME } from '../../memdir/memoryTypes.js'
++import { registerBundledSkill } from '../bundledSkills.js'
++
++/**
++ * The `memory-types` skill.
++ *
++ * Upstream kept the full four-type taxonomy (scope, when_to_save, how_to_use,
++ * body_structure, examples) out of the always-on system prompt and moved it
++ * here: the memory prompt only carries the one-line glosses and points at this
++ * skill, which the model reads once it has already decided to save something.
++ *
++ * `disableModelInvocation: false` on purpose — the memory prompt tells the
++ * model to invoke it by name, and it is only useful when the model can reach
++ * for it unprompted.
++ */
++export function registerMemoryTypesSkill(): void {
++  registerBundledSkill({
++    name: MEMORY_TYPES_SKILL_NAME,
++    description:
++      'Reference for the memory system: what each memory `type:` means, which scope (private vs team) it belongs in, how to structure the body, and worked examples. Read this after deciding to save a memory and before writing the file.',
++    whenToUse:
++      'When you have decided to save, update, or reorganize a memory file and need the taxonomy, scope rules, body structure, or examples.',
++    userInvocable: true,
++    async getPromptForCommand() {
++      return [{ type: 'text', text: MEMORY_TYPES_SKILL_BODY }]
++    },
++  })
++}
++
++const MEMORY_TYPES_SKILL_BODY = `# Memory types
++
++Four types, and only four. Pick the one that matches what you learned; the \`type:\` field goes under \`metadata:\` in the file's frontmatter.
++
++A memory is worth saving only when it captures something NOT derivable from the current project state. Code patterns, architecture, file paths, git history, and anything already in CLAUDE.md are all derivable — those are not memories.
++
++## \`user\`
++
++**Scope:** always private.
++
++**What it holds:** the user's role, goals, responsibilities, and knowledge. Great user memories let you tailor your behavior to this person's preferences and perspective. You would collaborate with a senior software engineer differently from someone writing their first line of code.
++
++**When to save:** whenever you learn about their role, preferences, responsibilities, or knowledge.
++
++**How to use it:** when your answer should be shaped by who they are or how much they already know — e.g. explaining a part of the code in terms they already have a mental model for.
++
++Keep it kind: never write a memory about the user that reads as a negative judgement, and skip anything irrelevant to the work you are doing together.
++
++**Examples**
++
++- user: "I'm a data scientist investigating what logging we have in place"
++  → *(private user)* data scientist, currently focused on observability/logging
++- user: "I've been writing Go for ten years but this is my first time touching the React side of this repo"
++  → *(private user)* deep Go expertise, new to React and to this project's frontend — frame frontend explanations in terms of backend analogues
++
++## \`feedback\`
++
++**Scope:** default to private. Save as team only when the guidance is clearly a project-wide convention every contributor should follow (a testing policy, a build invariant) — not a personal style preference.
++
++**What it holds:** guidance about *how to approach work*, both what to avoid and what to keep doing. Record from failure AND success: if you only save corrections you will avoid past mistakes but drift away from approaches the user already validated, and grow overly cautious. Before saving a private feedback memory, check it does not contradict a team feedback memory — if it does, either do not save it or note the override explicitly.
++
++**When to save:** any time the user corrects your approach ("no not that", "don't", "stop doing X") OR confirms a non-obvious approach worked ("yes exactly", "perfect, keep doing that", accepting an unusual choice without pushback). Corrections are easy to notice; confirmations are quieter — watch for them. In both cases save what applies to future conversations, especially when it is surprising or not obvious from the code. Include *why* so you can judge edge cases later.
++
++**Body structure:** lead with the rule itself, then a \`**Why:**\` line (the reason the user gave — often a past incident or a strong preference) and a \`**How to apply:**\` line (when and where this guidance kicks in). Knowing *why* lets you judge edge cases instead of following the rule blindly.
++
++If the correction was about a repeatable step — how you verified, committed, opened a PR, or used a project skill — fold it into the project skill that drives that step too (\`.claude/skills/<name>/SKILL.md\`): a terse, general edit, so the next session gets it right unprompted. Edit existing skill files only; never create one.
++
++**Examples**
++
++- user: "don't mock the database in these tests — we got burned last quarter when mocked tests passed but the prod migration failed"
++  → *(team feedback)* integration tests must hit a real database, not mocks. Why: prior incident where mock/prod divergence masked a broken migration.
++- user: "stop summarizing what you just did at the end of every response, I can read the diff"
++  → *(private feedback)* this user wants terse responses with no trailing summaries. Private because it is a communication preference, not a project convention.
++- user: "yeah the single bundled PR was the right call here, splitting this one would've just been churn"
++  → *(private feedback)* for refactors in this area, user prefers one bundled PR over many small ones. Confirmed after you chose this approach — a validated judgment call, not a correction.
++
++## \`project\`
++
++**Scope:** private or team, but strongly bias toward team.
++
++**What it holds:** ongoing work, goals, initiatives, bugs, or incidents that are not derivable from the code or git history. These give you the motivation behind the work: who is doing what, why, and by when.
++
++**When to save:** when you learn who is doing what, why, or by when. These change quickly, so keep your understanding current. Always convert relative dates to absolute ones when saving ("Thursday" → "2026-03-05") so the memory stays interpretable later.
++
++**Body structure:** lead with the fact or decision, then a \`**Why:**\` line (the motivation — often a constraint, deadline, or stakeholder ask) and a \`**How to apply:**\` line (how it should shape your suggestions). Project memories decay fast; the why is what lets a future session judge whether it is still load-bearing.
++
++**Examples**
++
++- user: "we're freezing all non-critical merges after Thursday — mobile team is cutting a release branch"
++  → *(team project)* merge freeze begins 2026-03-05 for the mobile release cut. Flag non-critical PR work scheduled after that date.
++- user: "the reason we're ripping out the old auth middleware is that legal flagged it for storing session tokens in a way that doesn't meet the new compliance requirements"
++  → *(team project)* the auth middleware rewrite is driven by legal/compliance requirements around session token storage, not tech-debt cleanup — scope decisions should favor compliance over ergonomics.
++
++## \`reference\`
++
++**Scope:** usually team.
++
++**What it holds:** pointers to where information lives in external systems, so you know where to look for up-to-date answers outside the project directory.
++
++**When to save:** when you learn about an external resource and its purpose — that bugs are tracked in a specific Linear project, or that feedback arrives in a specific Slack channel.
++
++**How to use it:** when the user mentions an external system, or when the answer probably lives in one.
++
++**Examples**
++
++- user: "check the Linear project "INGEST" if you want context on these tickets, that's where we track all pipeline bugs"
++  → *(team reference)* pipeline bugs are tracked in Linear project "INGEST".
++- user: "the Grafana board at grafana.internal/d/api-latency is what oncall watches — if you're touching request handling, that's the thing that'll page someone"
++  → *(team reference)* grafana.internal/d/api-latency is the oncall latency dashboard — check it when editing request-path code.
++
++## Linking memories
++
++Link related memories from the body with \`[[name]]\`, where \`name\` is the other file's \`name:\` slug. Link liberally: a \`[[name]]\` that does not resolve yet is fine — it marks something worth writing later, not an error.
++
++## Not memories
++
++- Code patterns, conventions, architecture, file paths, project structure — read the project instead.
++- Git history, recent changes, who-changed-what — \`git log\` / \`git blame\` are authoritative.
++- Debugging fixes or recipes — the fix is in the code and the commit message has the context.
++- Anything already documented in CLAUDE.md.
++- Ephemeral task state — in-progress work, temporary context, this conversation only.
++`
+diff --git a/src/skills/bundled/scheduleRemoteAgents.ts b/src/skills/bundled/scheduleRemoteAgents.ts
+deleted file mode 100644
+index 21b2ac6..0000000
+--- a/src/skills/bundled/scheduleRemoteAgents.ts
++++ /dev/null
+@@ -1,447 +0,0 @@
+-import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
+-import type { MCPServerConnection } from '../../services/mcp/types.js'
+-import { isPolicyAllowed } from '../../services/policyLimits/index.js'
+-import type { ToolUseContext } from '../../Tool.js'
+-import { ASK_USER_QUESTION_TOOL_NAME } from '../../tools/AskUserQuestionTool/prompt.js'
+-import { REMOTE_TRIGGER_TOOL_NAME } from '../../tools/RemoteTriggerTool/prompt.js'
+-import { getClaudeAIOAuthTokens } from '../../utils/auth.js'
+-import { checkRepoForRemoteAccess } from '../../utils/background/remote/preconditions.js'
+-import { logForDebugging } from '../../utils/debug.js'
+-import {
+-  detectCurrentRepositoryWithHost,
+-  parseGitRemote,
+-} from '../../utils/detectRepository.js'
+-import { getRemoteUrl } from '../../utils/git.js'
+-import { jsonStringify } from '../../utils/slowOperations.js'
+-import {
+-  createDefaultCloudEnvironment,
+-  type EnvironmentResource,
+-  fetchEnvironments,
+-} from '../../utils/teleport/environments.js'
+-import { registerBundledSkill } from '../bundledSkills.js'
+-
+-// Base58 alphabet (Bitcoin-style) used by the tagged ID system
+-const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+-
+-/**
+- * Decode a mcpsrv_ tagged ID to a UUID string.
+- * Tagged IDs have format: mcpsrv_01{base58(uuid.int)}
+- * where 01 is the version prefix.
+- *
+- * TODO(public-ship): Before shipping publicly, the /v1/mcp_servers endpoint
+- * should return the raw UUID directly so we don't need this client-side decoding.
+- * The tagged ID format is an internal implementation detail that could change.
+- */
+-function taggedIdToUUID(taggedId: string): string | null {
+-  const prefix = 'mcpsrv_'
+-  if (!taggedId.startsWith(prefix)) {
+-    return null
+-  }
+-  const rest = taggedId.slice(prefix.length)
+-  // Skip version prefix (2 chars, always "01")
+-  const base58Data = rest.slice(2)
+-
+-  // Decode base58 to bigint
+-  let n = 0n
+-  for (const c of base58Data) {
+-    const idx = BASE58.indexOf(c)
+-    if (idx === -1) {
+-      return null
+-    }
+-    n = n * 58n + BigInt(idx)
+-  }
+-
+-  // Convert to UUID hex string
+-  const hex = n.toString(16).padStart(32, '0')
+-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+-}
+-
+-type ConnectorInfo = {
+-  uuid: string
+-  name: string
+-  url: string
+-}
+-
+-function getConnectedClaudeAIConnectors(
+-  mcpClients: MCPServerConnection[],
+-): ConnectorInfo[] {
+-  const connectors: ConnectorInfo[] = []
+-  for (const client of mcpClients) {
+-    if (client.type !== 'connected') {
+-      continue
+-    }
+-    if (client.config.type !== 'claudeai-proxy') {
+-      continue
+-    }
+-    const uuid = taggedIdToUUID(client.config.id)
+-    if (!uuid) {
+-      continue
+-    }
+-    connectors.push({
+-      uuid,
+-      name: client.name,
+-      url: client.config.url,
+-    })
+-  }
+-  return connectors
+-}
+-
+-function sanitizeConnectorName(name: string): string {
+-  return name
+-    .replace(/^claude[.\s-]ai[.\s-]/i, '')
+-    .replace(/[^a-zA-Z0-9_-]/g, '-')
+-    .replace(/-+/g, '-')
+-    .replace(/^-|-$/g, '')
+-}
+-
+-function formatConnectorsInfo(connectors: ConnectorInfo[]): string {
+-  if (connectors.length === 0) {
+-    return 'No connected MCP connectors found. The user may need to connect servers at https://claude.ai/settings/connectors'
+-  }
+-  const lines = ['Connected connectors (available for triggers):']
+-  for (const c of connectors) {
+-    const safeName = sanitizeConnectorName(c.name)
+-    lines.push(
+-      `- ${c.name} (connector_uuid: ${c.uuid}, name: ${safeName}, url: ${c.url})`,
+-    )
+-  }
+-  return lines.join('\n')
+-}
+-
+-const BASE_QUESTION = 'What would you like to do with scheduled remote agents?'
+-
+-/**
+- * Formats setup notes as a bulleted Heads-up block. Shared between the
+- * initial AskUserQuestion dialog text (no-args path) and the prompt-body
+- * section (args path) so notes are never silently dropped.
+- */
+-function formatSetupNotes(notes: string[]): string {
+-  const items = notes.map(n => `- ${n}`).join('\n')
+-  return `⚠ Heads-up:\n${items}`
+-}
+-
+-async function getCurrentRepoHttpsUrl(): Promise<string | null> {
+-  const remoteUrl = await getRemoteUrl()
+-  if (!remoteUrl) {
+-    return null
+-  }
+-  const parsed = parseGitRemote(remoteUrl)
+-  if (!parsed) {
+-    return null
+-  }
+-  return `https://${parsed.host}/${parsed.owner}/${parsed.name}`
+-}
+-
+-function buildPrompt(opts: {
+-  userTimezone: string
+-  connectorsInfo: string
+-  gitRepoUrl: string | null
+-  environmentsInfo: string
+-  createdEnvironment: EnvironmentResource | null
+-  setupNotes: string[]
+-  needsGitHubAccessReminder: boolean
+-  userArgs: string
+-}): string {
+-  const {
+-    userTimezone,
+-    connectorsInfo,
+-    gitRepoUrl,
+-    environmentsInfo,
+-    createdEnvironment,
+-    setupNotes,
+-    needsGitHubAccessReminder,
+-    userArgs,
+-  } = opts
+-  // When the user passes args, the initial AskUserQuestion dialog is skipped.
+-  // Setup notes must surface in the prompt body instead, otherwise they're
+-  // computed and silently discarded (regression vs. the old hard-block).
+-  const setupNotesSection =
+-    userArgs && setupNotes.length > 0
+-      ? `\n## Setup Notes\n\n${formatSetupNotes(setupNotes)}\n`
+-      : ''
+-  const initialQuestion =
+-    setupNotes.length > 0
+-      ? `${formatSetupNotes(setupNotes)}\n\n${BASE_QUESTION}`
+-      : BASE_QUESTION
+-  const firstStep = userArgs
+-    ? `The user has already told you what they want (see User Request at the bottom). Skip the initial question and go directly to the matching workflow.`
+-    : `Your FIRST action must be a single ${ASK_USER_QUESTION_TOOL_NAME} tool call (no preamble). Use this EXACT string for the \`question\` field — do not paraphrase or shorten it:
+-
+-${jsonStringify(initialQuestion)}
+-
+-Set \`header: "Action"\` and offer the four actions (create/list/update/run) as options. After the user picks, follow the matching workflow below.`
+-
+-  return `# Schedule Remote Agents
+-
+-You are helping the user schedule, update, list, or run **remote** Claude Code agents. These are NOT local cron jobs — each trigger spawns a fully isolated remote session (CCR) in Anthropic's cloud infrastructure on a cron schedule. The agent runs in a sandboxed environment with its own git checkout, tools, and optional MCP connections.
+-
+-## First Step
+-
+-${firstStep}
+-${setupNotesSection}
+-
+-## What You Can Do
+-
+-Use the \`${REMOTE_TRIGGER_TOOL_NAME}\` tool (load it first with \`ToolSearch select:${REMOTE_TRIGGER_TOOL_NAME}\`; auth is handled in-process — do not use curl):
+-
+-- \`{action: "list"}\` — list all triggers
+-- \`{action: "get", trigger_id: "..."}\` — fetch one trigger
+-- \`{action: "create", body: {...}}\` — create a trigger
+-- \`{action: "update", trigger_id: "...", body: {...}}\` — partial update
+-- \`{action: "run", trigger_id: "..."}\` — run a trigger now
+-
+-You CANNOT delete triggers. If the user asks to delete, direct them to: https://claude.ai/code/scheduled
+-
+-## Create body shape
+-
+-\`\`\`json
+-{
+-  "name": "AGENT_NAME",
+-  "cron_expression": "CRON_EXPR",
+-  "enabled": true,
+-  "job_config": {
+-    "ccr": {
+-      "environment_id": "ENVIRONMENT_ID",
+-      "session_context": {
+-        "model": "claude-sonnet-4-6",
+-        "sources": [
+-          {"git_repository": {"url": "${gitRepoUrl || 'https://github.com/ORG/REPO'}"}}
+-        ],
+-        "allowed_tools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"]
+-      },
+-      "events": [
+-        {"data": {
+-          "uuid": "<lowercase v4 uuid>",
+-          "session_id": "",
+-          "type": "user",
+-          "parent_tool_use_id": null,
+-          "message": {"content": "PROMPT_HERE", "role": "user"}
+-        }}
+-      ]
+-    }
+-  }
+-}
+-\`\`\`
+-
+-Generate a fresh lowercase UUID for \`events[].data.uuid\` yourself.
+-
+-## Available MCP Connectors
+-
+-These are the user's currently connected claude.ai MCP connectors:
+-
+-${connectorsInfo}
+-
+-When attaching connectors to a trigger, use the \`connector_uuid\` and \`name\` shown above (the name is already sanitized to only contain letters, numbers, hyphens, and underscores), and the connector's URL. The \`name\` field in \`mcp_connections\` must only contain \`[a-zA-Z0-9_-]\` — dots and spaces are NOT allowed.
+-
+-**Important:** Infer what services the agent needs from the user's description. For example, if they say "check Datadog and Slack me errors," the agent needs both Datadog and Slack connectors. Cross-reference against the list above and warn if any required service isn't connected. If a needed connector is missing, direct the user to https://claude.ai/settings/connectors to connect it first.
+-
+-## Environments
+-
+-Every trigger requires an \`environment_id\` in the job config. This determines where the remote agent runs. Ask the user which environment to use.
+-
+-${environmentsInfo}
+-
+-Use the \`id\` value as the \`environment_id\` in \`job_config.ccr.environment_id\`.
+-${createdEnvironment ? `\n**Note:** A new environment \`${createdEnvironment.name}\` (id: \`${createdEnvironment.environment_id}\`) was just created for the user because they had none. Use this id for \`job_config.ccr.environment_id\` and mention the creation when you confirm the trigger config.\n` : ''}
+-
+-## API Field Reference
+-
+-### Create Trigger — Required Fields
+-- \`name\` (string) — A descriptive name
+-- \`cron_expression\` (string) — 5-field cron. **Minimum interval is 1 hour.**
+-- \`job_config\` (object) — Session configuration (see structure above)
+-
+-### Create Trigger — Optional Fields
+-- \`enabled\` (boolean, default: true)
+-- \`mcp_connections\` (array) — MCP servers to attach:
+-  \`\`\`json
+-  [{"connector_uuid": "uuid", "name": "server-name", "url": "https://..."}]
+-  \`\`\`
+-
+-### Update Trigger — Optional Fields
+-All fields optional (partial update):
+-- \`name\`, \`cron_expression\`, \`enabled\`, \`job_config\`
+-- \`mcp_connections\` — Replace MCP connections
+-- \`clear_mcp_connections\` (boolean) — Remove all MCP connections
+-
+-### Cron Expression Examples
+-
+-The user's local timezone is **${userTimezone}**. Cron expressions are always in UTC. When the user says a local time, convert it to UTC for the cron expression but confirm with them: "9am ${userTimezone} = Xam UTC, so the cron would be \`0 X * * 1-5\`."
+-
+-- \`0 9 * * 1-5\` — Every weekday at 9am **UTC**
+-- \`0 */2 * * *\` — Every 2 hours
+-- \`0 0 * * *\` — Daily at midnight **UTC**
+-- \`30 14 * * 1\` — Every Monday at 2:30pm **UTC**
+-- \`0 8 1 * *\` — First of every month at 8am **UTC**
+-
+-Minimum interval is 1 hour. \`*/30 * * * *\` will be rejected.
+-
+-## Workflow
+-
+-### CREATE a new trigger:
+-
+-1. **Understand the goal** — Ask what they want the remote agent to do. What repo(s)? What task? Remind them that the agent runs remotely — it won't have access to their local machine, local files, or local environment variables.
+-2. **Craft the prompt** — Help them write an effective agent prompt. Good prompts are:
+-   - Specific about what to do and what success looks like
+-   - Clear about which files/areas to focus on
+-   - Explicit about what actions to take (open PRs, commit, just analyze, etc.)
+-3. **Set the schedule** — Ask when and how often. The user's timezone is ${userTimezone}. When they say a time (e.g., "every morning at 9am"), assume they mean their local time and convert to UTC for the cron expression. Always confirm the conversion: "9am ${userTimezone} = Xam UTC."
+-4. **Choose the model** — Default to \`claude-sonnet-4-6\`. Tell the user which model you're defaulting to and ask if they want a different one.
+-5. **Validate connections** — Infer what services the agent will need from the user's description. For example, if they say "check Datadog and Slack me errors," the agent needs both Datadog and Slack MCP connectors. Cross-reference with the connectors list above. If any are missing, warn the user and link them to https://claude.ai/settings/connectors to connect first.${gitRepoUrl ? ` The default git repo is already set to \`${gitRepoUrl}\`. Ask the user if this is the right repo or if they need a different one.` : ' Ask which git repos the remote agent needs cloned into its environment.'}
+-6. **Review and confirm** — Show the full configuration before creating. Let them adjust.
+-7. **Create it** \u2014 Call \`${REMOTE_TRIGGER_TOOL_NAME}\` with \`action: "create"\` and show the result. The response includes the trigger ID. Always output a link at the end: \`https://claude.ai/code/scheduled/{TRIGGER_ID}\`
+-
+-### UPDATE a trigger:
+-
+-1. List triggers first so they can pick one
+-2. Ask what they want to change
+-3. Show current vs proposed value
+-4. Confirm and update
+-
+-### LIST triggers:
+-
+-1. Fetch and display in a readable format
+-2. Show: name, schedule (human-readable), enabled/disabled, next run, repo(s)
+-
+-### RUN NOW:
+-
+-1. List triggers if they haven't specified which one
+-2. Confirm which trigger
+-3. Execute and confirm
+-
+-## Important Notes
+-
+-- These are REMOTE agents — they run in Anthropic's cloud, not on the user's machine. They cannot access local files, local services, or local environment variables.
+-- Always convert cron to human-readable when displaying
+-- Default to \`enabled: true\` unless user says otherwise
+-- Accept GitHub URLs in any format (https://github.com/org/repo, org/repo, etc.) and normalize to the full HTTPS URL (without .git suffix)
+-- The prompt is the most important part — spend time getting it right. The remote agent starts with zero context, so the prompt must be self-contained.
+-- To delete a trigger, direct users to https://claude.ai/code/scheduled
+-${needsGitHubAccessReminder ? `- If the user's request seems to require GitHub repo access (e.g. cloning a repo, opening PRs, reading code), remind them that ${getFeatureValue_CACHED_MAY_BE_STALE('tengu_cobalt_lantern', false) ? "they should run /web-setup to connect their GitHub account (or install the Claude GitHub App on the repo as an alternative) — otherwise the remote agent won't be able to access it" : "they need the Claude GitHub App installed on the repo — otherwise the remote agent won't be able to access it"}.` : ''}
+-${userArgs ? `\n## User Request\n\nThe user said: "${userArgs}"\n\nStart by understanding their intent and working through the appropriate workflow above.` : ''}`
+-}
+-
+-export function registerScheduleRemoteAgentsSkill(): void {
+-  registerBundledSkill({
+-    name: 'schedule',
+-    description:
+-      'Create, update, list, or run scheduled remote agents (triggers) that execute on a cron schedule.',
+-    whenToUse:
+-      'When the user wants to schedule a recurring remote agent, set up automated tasks, create a cron job for Claude Code, or manage their scheduled agents/triggers.',
+-    userInvocable: true,
+-    isEnabled: () =>
+-      getFeatureValue_CACHED_MAY_BE_STALE('tengu_surreal_dali', false) &&
+-      isPolicyAllowed('allow_remote_sessions'),
+-    allowedTools: [REMOTE_TRIGGER_TOOL_NAME, ASK_USER_QUESTION_TOOL_NAME],
+-    async getPromptForCommand(args: string, context: ToolUseContext) {
+-      if (!getClaudeAIOAuthTokens()?.accessToken) {
+-        return [
+-          {
+-            type: 'text',
+-            text: 'You need to authenticate with a claude.ai account first. API accounts are not supported. Run /login, then try /schedule again.',
+-          },
+-        ]
+-      }
+-
+-      let environments: EnvironmentResource[]
+-      try {
+-        environments = await fetchEnvironments()
+-      } catch (err) {
+-        logForDebugging(`[schedule] Failed to fetch environments: ${err}`, {
+-          level: 'warn',
+-        })
+-        return [
+-          {
+-            type: 'text',
+-            text: "We're having trouble connecting with your remote claude.ai account to set up a scheduled task. Please try /schedule again in a few minutes.",
+-          },
+-        ]
+-      }
+-
+-      let createdEnvironment: EnvironmentResource | null = null
+-      if (environments.length === 0) {
+-        try {
+-          createdEnvironment = await createDefaultCloudEnvironment(
+-            'claude-code-default',
+-          )
+-          environments = [createdEnvironment]
+-        } catch (err) {
+-          logForDebugging(`[schedule] Failed to create environment: ${err}`, {
+-            level: 'warn',
+-          })
+-          return [
+-            {
+-              type: 'text',
+-              text: 'No remote environments found, and we could not create one automatically. Visit https://claude.ai/code to set one up, then run /schedule again.',
+-            },
+-          ]
+-        }
+-      }
+-
+-      // Soft setup checks — collected as upfront notes embedded in the initial
+-      // AskUserQuestion dialog. Never block — triggers don't require a git
+-      // source (e.g., Slack-only polls), and the trigger's sources may point
+-      // at a different repo than cwd anyway.
+-      const setupNotes: string[] = []
+-      let needsGitHubAccessReminder = false
+-
+-      const repo = await detectCurrentRepositoryWithHost()
+-      if (repo === null) {
+-        setupNotes.push(
+-          `Not in a git repo — you'll need to specify a repo URL manually (or skip repos entirely).`,
+-        )
+-      } else if (repo.host === 'github.com') {
+-        const { hasAccess } = await checkRepoForRemoteAccess(
+-          repo.owner,
+-          repo.name,
+-        )
+-        if (!hasAccess) {
+-          needsGitHubAccessReminder = true
+-          const webSetupEnabled = getFeatureValue_CACHED_MAY_BE_STALE(
+-            'tengu_cobalt_lantern',
+-            false,
+-          )
+-          const msg = webSetupEnabled
+-            ? `GitHub not connected for ${repo.owner}/${repo.name} \u2014 run /web-setup to sync your GitHub credentials, or install the Claude GitHub App at https://claude.ai/code/onboarding?magic=github-app-setup.`
+-            : `Claude GitHub App not installed on ${repo.owner}/${repo.name} \u2014 install at https://claude.ai/code/onboarding?magic=github-app-setup if your trigger needs this repo.`
+-          setupNotes.push(msg)
+-        }
+-      }
+-      // Non-github.com hosts (GHE/GitLab/etc.): silently skip. The GitHub
+-      // App check is github.com-specific, and the "not in a git repo" note
+-      // would be factually wrong — getCurrentRepoHttpsUrl() below will
+-      // still populate gitRepoUrl with the GHE URL.
+-
+-      const connectors = getConnectedClaudeAIConnectors(
+-        context.options.mcpClients,
+-      )
+-      if (connectors.length === 0) {
+-        setupNotes.push(
+-          `No MCP connectors — connect at https://claude.ai/settings/connectors if needed.`,
+-        )
+-      }
+-
+-      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone
+-      const connectorsInfo = formatConnectorsInfo(connectors)
+-      const gitRepoUrl = await getCurrentRepoHttpsUrl()
+-      const lines = ['Available environments:']
+-      for (const env of environments) {
+-        lines.push(
+-          `- ${env.name} (id: ${env.environment_id}, kind: ${env.kind})`,
+-        )
+-      }
+-      const environmentsInfo = lines.join('\n')
+-      const prompt = buildPrompt({
+-        userTimezone,
+-        connectorsInfo,
+-        gitRepoUrl,
+-        environmentsInfo,
+-        createdEnvironment,
+-        setupNotes,
+-        needsGitHubAccessReminder,
+-        userArgs: args,
+-      })
+-      return [{ type: 'text', text: prompt }]
+-    },
+-  })
+-}
+diff --git a/src/skills/bundled/stuck.ts b/src/skills/bundled/stuck.ts
+deleted file mode 100644
+index 670ebd9..0000000
+--- a/src/skills/bundled/stuck.ts
++++ /dev/null
+@@ -1 +0,0 @@
+-export function registerStuckSkill(): void {}
+diff --git a/src/skills/bundled/verifyContent.ts b/src/skills/bundled/verifyContent.ts
+deleted file mode 100644
+index a90044f..0000000
+--- a/src/skills/bundled/verifyContent.ts
++++ /dev/null
+@@ -1,13 +0,0 @@
+-// Content for the verify bundled skill.
+-// Each .md file is inlined as a string at build time via Bun's text loader.
+-
+-import cliMd from './verify/examples/cli.md'
+-import serverMd from './verify/examples/server.md'
+-import skillMd from './verify/SKILL.md'
+-
+-export const SKILL_MD: string = skillMd
+-
+-export const SKILL_FILES: Record<string, string> = {
+-  'examples/cli.md': cliMd,
+-  'examples/server.md': serverMd,
+-}
+diff --git a/src/utils/attachments.ts b/src/utils/attachments.ts
+index e3c8362..1683b02 100644
+--- a/src/utils/attachments.ts
++++ b/src/utils/attachments.ts
+@@ -230,6 +230,8 @@ import { getPDFPageCount } from './pdf.js'
+ import { PDF_AT_MENTION_INLINE_THRESHOLD } from '../constants/apiLimits.js'
+ import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
+ import { findRelevantMemories } from '../memdir/findRelevantMemories.js'
++import { MEMORY_FILE_MAX_BYTES } from '../memdir/memoryTypes.js'
++import { resolveLinkedMemoryPaths } from '../memdir/memoryLinks.js'
+ import { memoryAge, memoryFreshnessText } from '../memdir/memoryAge.js'
+ import { getAutoMemPath, isAutoMemoryEnabled } from '../memdir/paths.js'
+ import { getAgentMemoryDir } from '../tools/AgentTool/agentMemory.js'
+@@ -269,13 +271,20 @@ export const AUTO_MODE_ATTACHMENT_CONFIG = {
+ 
+ const MAX_MEMORY_LINES = 200
+ // Line cap alone doesn't bound size (200 × 500-char lines = 100KB).  The
+-// surfacer injects up to 5 files per turn via <system-reminder>, bypassing
+-// the per-message tool-result budget, so a tight per-file byte cap keeps
+-// aggregate injection bounded (5 × 4KB = 20KB/turn).  Enforced via
+-// readFileInRange's truncateOnByteLimit option.  Truncation means the
+-// most-relevant memory still surfaces: the frontmatter + opening context
++// surfacer injects up to MAX_RELEVANT_MEMORIES files per turn via
++// <system-reminder>, bypassing the per-message tool-result budget, so a tight
++// per-file byte cap keeps aggregate injection bounded (5 × 4KB = 20KB/turn).
++// Enforced via readFileInRange's truncateOnByteLimit option.  Truncation means
++// the most-relevant memory still surfaces: the frontmatter + opening context
+ // is usually what matters.
+-const MAX_MEMORY_BYTES = 4096
++//
++// Shared with the memory prompt, which tells the model to keep each memory
++// file under this size — one number, so the prompt cannot drift from what the
++// surfacer enforces.
++const MAX_MEMORY_BYTES = MEMORY_FILE_MAX_BYTES
++
++/** Memories injected per turn: selector ranking first, linked one-hop fill. */
++const MAX_RELEVANT_MEMORIES = 5
+ 
+ export const RELEVANT_MEMORIES_CONFIG = {
+   // Per-turn cap (5 × 4KB = 20KB) bounds a single injection, but over a
+@@ -2232,9 +2241,11 @@ async function getRelevantMemoryAttachments(
+   const selected = allResults
+     .flat()
+     .filter(m => !readFileState.has(m.path) && !alreadySurfaced.has(m.path))
+-    .slice(0, 5)
++    .slice(0, MAX_RELEVANT_MEMORIES)
+ 
+-  const memories = await readMemoriesForSurfacing(selected, signal)
++  const direct = await readMemoriesForSurfacing(selected, signal)
++  // OpenClaude: pull one hop of `[[name]]` links along with the ranked files.
++  const memories = await expandLinkedMemories(direct, dirs, signal)
+ 
+   if (memories.length === 0) {
+     return []
+@@ -2242,6 +2253,72 @@ async function getRelevantMemoryAttachments(
+   return [{ type: 'relevant_memories' as const, memories }]
+ }
+ 
++/**
++ * OpenClaude: follow one hop of `[[name]]` links out of the memories the
++ * selector picked.
++ *
++ * This is what makes a link worth writing: a memory that points at its own
++ * background arrives with that background, instead of leaving the model to
++ * guess a filename from the slug. Depth is exactly one hop and the batch is
++ * capped at MAX_RELEVANT_MEMORIES, so a densely cross-linked memory directory
++ * cannot drain the turn budget through link traversal. Linked files are
++ * appended after the directly-selected ones — the selector's ranking stays
++ * authoritative, links only fill the remaining slots.
++ *
++ * Only links out of the directly-selected memories are followed, and only
++ * within the directory those memories came from: an agent-memory surface must
++ * not pull in auto-memory files through a slug that happens to match.
++ */
++async function expandLinkedMemories(
++  direct: Awaited<ReturnType<typeof readMemoriesForSurfacing>>,
++  dirs: readonly string[],
++  signal: AbortSignal,
++): Promise<Awaited<ReturnType<typeof readMemoriesForSurfacing>>> {
++  const remaining = MAX_RELEVANT_MEMORIES - direct.length
++  if (remaining <= 0 || direct.length === 0) {
++    return direct
++  }
++
++  const surfacedPaths = new Set(direct.map(m => m.path))
++  const linked: Array<{ path: string; mtimeMs: number }> = []
++  for (const dir of dirs) {
++    if (linked.length >= remaining) break
++    const sources = direct.filter(m => m.path.startsWith(dir))
++    if (sources.length === 0) continue
++
++    let paths: string[]
++    try {
++      paths = await resolveLinkedMemoryPaths({
++        memoryDir: dir,
++        sources,
++        skip: surfacedPaths,
++        limit: remaining - linked.length,
++        signal,
++      })
++    } catch {
++      // Links are a bonus: a directory that fails to resolve contributes none.
++      continue
++    }
++
++    for (const path of paths) {
++      // Stat for the freshness header; a link whose target vanished between
++      // resolution and here is dropped rather than failing the whole pass.
++      try {
++        const { mtimeMs } = await stat(path)
++        linked.push({ path, mtimeMs })
++        surfacedPaths.add(path)
++      } catch {
++        // Unreadable link target.
++      }
++    }
++  }
++
++  if (linked.length === 0) {
++    return direct
++  }
++  return [...direct, ...(await readMemoriesForSurfacing(linked, signal))]
++}
++
+ /**
+  * Scan messages for past relevant_memories attachments.  Returns both the
+  * set of surfaced paths (for selector de-dup) and cumulative byte count
+diff --git a/src/utils/frontmatterParser.ts b/src/utils/frontmatterParser.ts
+index 9f5deba..1af040d 100644
+--- a/src/utils/frontmatterParser.ts
++++ b/src/utils/frontmatterParser.ts
+@@ -11,8 +11,11 @@ export type FrontmatterData = {
+   // YAML can return null for keys with no value (e.g., "key:" with nothing after)
+   'allowed-tools'?: string | string[] | null
+   description?: string | null
+-  // Memory type: 'user', 'feedback', 'project', or 'reference'
+-  // Only applicable to memory files; narrowed via parseMemoryType() in src/memdir/memoryTypes.ts
++  // Free-form map. Carries the memory taxonomy on memory files
++  // (`metadata.type`: 'user' | 'feedback' | 'project' | 'reference', narrowed
++  // by memoryTypeFromFrontmatter() in src/memdir/memoryTypes.ts) alongside
++  // bookkeeping the writer wants to keep.
++  metadata?: Record<string, unknown> | null
+   type?: string | null
+   'argument-hint'?: string | null
+   when_to_use?: string | null
+diff --git a/src/utils/messages.ts b/src/utils/messages.ts
+index 0597fd8..3cd1dc3 100644
+--- a/src/utils/messages.ts
++++ b/src/utils/messages.ts
+@@ -25,6 +25,7 @@ import type { AgentId } from 'src/types/ids.js'
+ import { companionIntroText } from '../buddy/prompt.js'
+ import { NO_CONTENT_MESSAGE } from '../constants/messages.js'
+ import { OUTPUT_STYLE_CONFIG } from '../constants/outputStyles.js'
++import { MEMORY_RECALL_PREFIX } from '../memdir/memoryTypes.js'
+ import { isAutoMemoryEnabled } from '../memdir/paths.js'
+ import {
+   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
+@@ -3719,14 +3720,19 @@ Read the team config to discover your teammates' names. Check the task list peri
+     }
+     case 'relevant_memories': {
+       return wrapMessagesInSystemReminder(
+-        attachment.memories.map(m => {
++        attachment.memories.map((m, index) => {
+           // Use the header stored at attachment-creation time so the
+           // rendered bytes are stable across turns (prompt-cache hit).
+           // Fall back to recomputing for resumed sessions that predate
+           // the stored-header field.
+           const header = m.header ?? memoryHeader(m.path, m.mtimeMs)
++          // OpenClaude: the prefix goes on the first block only — it is
++          // guidance about the whole batch, and repeating it per memory would
++          // invite the model to weigh each one separately as if the others did
++          // not apply.
++          const prefix = index === 0 ? `${MEMORY_RECALL_PREFIX}\n\n` : ''
+           return createUserMessage({
+-            content: `${header}\n\n${m.content}`,
++            content: `${prefix}${header}\n\n${m.content}`,
+             isMeta: true,
+           })
+         }),
+-- 
+2.47.0.rc1.windows.1
+
