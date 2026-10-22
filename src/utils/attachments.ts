@@ -230,6 +230,8 @@ import { getPDFPageCount } from './pdf.js'
 import { PDF_AT_MENTION_INLINE_THRESHOLD } from '../constants/apiLimits.js'
 import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 import { findRelevantMemories } from '../memdir/findRelevantMemories.js'
+import { MEMORY_FILE_MAX_BYTES } from '../memdir/memoryTypes.js'
+import { resolveLinkedMemoryPaths } from '../memdir/memoryLinks.js'
 import { memoryAge, memoryFreshnessText } from '../memdir/memoryAge.js'
 import { getAutoMemPath, isAutoMemoryEnabled } from '../memdir/paths.js'
 import { getAgentMemoryDir } from '../tools/AgentTool/agentMemory.js'
@@ -269,13 +271,20 @@ export const AUTO_MODE_ATTACHMENT_CONFIG = {
 
 const MAX_MEMORY_LINES = 200
 // Line cap alone doesn't bound size (200 × 500-char lines = 100KB).  The
-// surfacer injects up to 5 files per turn via <system-reminder>, bypassing
-// the per-message tool-result budget, so a tight per-file byte cap keeps
-// aggregate injection bounded (5 × 4KB = 20KB/turn).  Enforced via
-// readFileInRange's truncateOnByteLimit option.  Truncation means the
-// most-relevant memory still surfaces: the frontmatter + opening context
+// surfacer injects up to MAX_RELEVANT_MEMORIES files per turn via
+// <system-reminder>, bypassing the per-message tool-result budget, so a tight
+// per-file byte cap keeps aggregate injection bounded (5 × 4KB = 20KB/turn).
+// Enforced via readFileInRange's truncateOnByteLimit option.  Truncation means
+// the most-relevant memory still surfaces: the frontmatter + opening context
 // is usually what matters.
-const MAX_MEMORY_BYTES = 4096
+//
+// Shared with the memory prompt, which tells the model to keep each memory
+// file under this size — one number, so the prompt cannot drift from what the
+// surfacer enforces.
+const MAX_MEMORY_BYTES = MEMORY_FILE_MAX_BYTES
+
+/** Memories injected per turn: selector ranking first, linked one-hop fill. */
+const MAX_RELEVANT_MEMORIES = 5
 
 export const RELEVANT_MEMORIES_CONFIG = {
   // Per-turn cap (5 × 4KB = 20KB) bounds a single injection, but over a
@@ -2232,14 +2241,82 @@ async function getRelevantMemoryAttachments(
   const selected = allResults
     .flat()
     .filter(m => !readFileState.has(m.path) && !alreadySurfaced.has(m.path))
-    .slice(0, 5)
+    .slice(0, MAX_RELEVANT_MEMORIES)
 
-  const memories = await readMemoriesForSurfacing(selected, signal)
+  const direct = await readMemoriesForSurfacing(selected, signal)
+  // OpenClaude: pull one hop of `[[name]]` links along with the ranked files.
+  const memories = await expandLinkedMemories(direct, dirs, signal)
 
   if (memories.length === 0) {
     return []
   }
   return [{ type: 'relevant_memories' as const, memories }]
+}
+
+/**
+ * OpenClaude: follow one hop of `[[name]]` links out of the memories the
+ * selector picked.
+ *
+ * This is what makes a link worth writing: a memory that points at its own
+ * background arrives with that background, instead of leaving the model to
+ * guess a filename from the slug. Depth is exactly one hop and the batch is
+ * capped at MAX_RELEVANT_MEMORIES, so a densely cross-linked memory directory
+ * cannot drain the turn budget through link traversal. Linked files are
+ * appended after the directly-selected ones — the selector's ranking stays
+ * authoritative, links only fill the remaining slots.
+ *
+ * Only links out of the directly-selected memories are followed, and only
+ * within the directory those memories came from: an agent-memory surface must
+ * not pull in auto-memory files through a slug that happens to match.
+ */
+async function expandLinkedMemories(
+  direct: Awaited<ReturnType<typeof readMemoriesForSurfacing>>,
+  dirs: readonly string[],
+  signal: AbortSignal,
+): Promise<Awaited<ReturnType<typeof readMemoriesForSurfacing>>> {
+  const remaining = MAX_RELEVANT_MEMORIES - direct.length
+  if (remaining <= 0 || direct.length === 0) {
+    return direct
+  }
+
+  const surfacedPaths = new Set(direct.map(m => m.path))
+  const linked: Array<{ path: string; mtimeMs: number }> = []
+  for (const dir of dirs) {
+    if (linked.length >= remaining) break
+    const sources = direct.filter(m => m.path.startsWith(dir))
+    if (sources.length === 0) continue
+
+    let paths: string[]
+    try {
+      paths = await resolveLinkedMemoryPaths({
+        memoryDir: dir,
+        sources,
+        skip: surfacedPaths,
+        limit: remaining - linked.length,
+        signal,
+      })
+    } catch {
+      // Links are a bonus: a directory that fails to resolve contributes none.
+      continue
+    }
+
+    for (const path of paths) {
+      // Stat for the freshness header; a link whose target vanished between
+      // resolution and here is dropped rather than failing the whole pass.
+      try {
+        const { mtimeMs } = await stat(path)
+        linked.push({ path, mtimeMs })
+        surfacedPaths.add(path)
+      } catch {
+        // Unreadable link target.
+      }
+    }
+  }
+
+  if (linked.length === 0) {
+    return direct
+  }
+  return [...direct, ...(await readMemoriesForSurfacing(linked, signal))]
 }
 
 /**

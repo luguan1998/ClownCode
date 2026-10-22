@@ -7,14 +7,22 @@
  * extractMemories.ts skips that turn (hasMemoryWritesSince). This prompt
  * fires only when the main agent didn't write, so the save-criteria here
  * overlap the system prompt's harmlessly.
+ *
+ * OpenClaude: rewritten onto the compact taxonomy fragment set, so this prompt
+ * and the main system prompt state the same rules (one-line type glosses +
+ * `memory-types` skill pointer, nested `metadata.type` frontmatter, `[[name]]`
+ * wikilinks, the save guard). `skipIndex` picks the index-pointer vs per-file
+ * cap variant, and the combined variant adds the private/team scope split.
  */
 
 import { feature } from 'bun:bundle'
 import {
   MEMORY_FRONTMATTER_EXAMPLE,
-  TYPES_SECTION_COMBINED,
-  TYPES_SECTION_INDIVIDUAL,
-  WHAT_NOT_TO_SAVE_SECTION,
+  MEMORY_LINK_CONVENTION,
+  MEMORY_SAVE_GUARD,
+  memoryFileCapLine,
+  memoryIndexPointerLine,
+  typesSection,
 } from '../../memdir/memoryTypes.js'
 import { BASH_TOOL_NAME } from '../../tools/BashTool/toolName.js'
 import { FILE_EDIT_TOOL_NAME } from '../../tools/FileEditTool/constants.js'
@@ -44,6 +52,41 @@ function opener(newMessageCount: number, existingMemories: string): string {
 }
 
 /**
+ * Shared "how to save" block. The index variant names the entrypoint the
+ * pointer line should go into; the read-only variant states the per-file cap
+ * instead, since nothing is being indexed.
+ */
+function howToSave(options: {
+  skipIndex: boolean
+  indexPointer?: string
+}): string[] {
+  const writeLine = options.skipIndex
+    ? 'Write each memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:'
+    : 'Saving a memory is a two-step process:\n\n**Step 1** — write the memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:'
+
+  return [
+    '## How to save memories',
+    '',
+    writeLine,
+    '',
+    ...MEMORY_FRONTMATTER_EXAMPLE,
+    '',
+    MEMORY_LINK_CONVENTION,
+    '',
+    ...(options.skipIndex
+      ? [memoryFileCapLine()]
+      : [
+          `**Step 2** — ${options.indexPointer}`,
+          '',
+          '- Keep the name, description, and type fields in memory files up-to-date with the content',
+          '- Organize memory semantically by topic, not chronologically',
+          '- Update or remove memories that turn out to be wrong or outdated',
+          '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
+        ]),
+  ]
+}
+
+/**
  * Build the extraction prompt for auto-only memory (no team memory).
  * Four-type taxonomy, no scope guidance (single directory).
  */
@@ -52,51 +95,24 @@ export function buildExtractAutoOnlyPrompt(
   existingMemories: string,
   skipIndex = false,
 ): string {
-  const howToSave = skipIndex
-    ? [
-        '## How to save memories',
-        '',
-        'Write each memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:',
-        '',
-        ...MEMORY_FRONTMATTER_EXAMPLE,
-        '',
-        '- Organize memory semantically by topic, not chronologically',
-        '- Update or remove memories that turn out to be wrong or outdated',
-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
-      ]
-    : [
-        '## How to save memories',
-        '',
-        'Saving a memory is a two-step process:',
-        '',
-        '**Step 1** — write the memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:',
-        '',
-        ...MEMORY_FRONTMATTER_EXAMPLE,
-        '',
-        '**Step 2** — add a pointer to that file in `MEMORY.md`. `MEMORY.md` is an index, not a memory — each entry should be one line, under ~150 characters: `- [Title](file.md) — one-line hook`. It has no frontmatter. Never write memory content directly into `MEMORY.md`.',
-        '',
-        '- `MEMORY.md` is always loaded into your system prompt — lines after 200 will be truncated, so keep the index concise',
-        '- Organize memory semantically by topic, not chronologically',
-        '- Update or remove memories that turn out to be wrong or outdated',
-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
-      ]
-
   return [
     opener(newMessageCount, existingMemories),
     '',
     'If the user explicitly asks you to remember something, save it immediately as whichever type fits best. If they ask you to forget something, find and remove the relevant entry.',
     '',
-    ...TYPES_SECTION_INDIVIDUAL,
-    ...WHAT_NOT_TO_SAVE_SECTION,
+    ...typesSection(false),
+    MEMORY_SAVE_GUARD,
     '',
-    ...howToSave,
+    ...howToSave({
+      skipIndex,
+      indexPointer: `add a pointer to that file in \`MEMORY.md\` (\`- [Title](file.md) — hook\`). \`MEMORY.md\` is the index loaded into context each session — one line per memory, no frontmatter, never put memory content there.`,
+    }),
   ].join('\n')
 }
 
 /**
  * Build the extraction prompt for combined auto + team memory.
- * Four-type taxonomy with per-type <scope> guidance (directory choice
- * is baked into each type block, no separate routing section needed).
+ * Same fragments as the main prompt's combined variant.
  */
 export function buildExtractCombinedPrompt(
   newMessageCount: number,
@@ -111,44 +127,20 @@ export function buildExtractCombinedPrompt(
     )
   }
 
-  const howToSave = skipIndex
-    ? [
-        '## How to save memories',
-        '',
-        "Write each memory to its own file in the chosen directory (private or team, per the type's scope guidance) using this frontmatter format:",
-        '',
-        ...MEMORY_FRONTMATTER_EXAMPLE,
-        '',
-        '- Organize memory semantically by topic, not chronologically',
-        '- Update or remove memories that turn out to be wrong or outdated',
-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
-      ]
-    : [
-        '## How to save memories',
-        '',
-        'Saving a memory is a two-step process:',
-        '',
-        "**Step 1** — write the memory to its own file in the chosen directory (private or team, per the type's scope guidance) using this frontmatter format:",
-        '',
-        ...MEMORY_FRONTMATTER_EXAMPLE,
-        '',
-        "**Step 2** — add a pointer to that file in the same directory's `MEMORY.md`. Each directory (private and team) has its own `MEMORY.md` index — each entry should be one line, under ~150 characters: `- [Title](file.md) — one-line hook`. They have no frontmatter. Never write memory content directly into a `MEMORY.md`.",
-        '',
-        '- Both `MEMORY.md` indexes are loaded into your system prompt — lines after 200 will be truncated, so keep them concise',
-        '- Organize memory semantically by topic, not chronologically',
-        '- Update or remove memories that turn out to be wrong or outdated',
-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
-      ]
-
   return [
     opener(newMessageCount, existingMemories),
     '',
     'If the user explicitly asks you to remember something, save it immediately as whichever type fits best. If they ask you to forget something, find and remove the relevant entry.',
     '',
-    ...TYPES_SECTION_COMBINED,
-    ...WHAT_NOT_TO_SAVE_SECTION,
-    '- You MUST avoid saving sensitive data within shared team memories. For example, never save API keys or user credentials.',
+    ...typesSection(true),
+    MEMORY_SAVE_GUARD,
     '',
-    ...howToSave,
+    ...howToSave({
+      skipIndex,
+      indexPointer: memoryIndexPointerLine({
+        entrypointName: 'MEMORY.md',
+        teamPrefixes: ['team/'],
+      }),
+    }),
   ].join('\n')
 }

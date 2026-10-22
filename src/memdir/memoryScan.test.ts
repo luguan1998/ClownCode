@@ -17,19 +17,26 @@ afterEach(async () => {
 
 test('scanMemoryFiles finds .md files at shallow depth', async () => {
   tempDir = await mkdtemp(join(tmpdir(), 'memoryScan-'))
-  await writeFile(join(tempDir, 'note.md'), '---\nname: test\ntype: user\n---\nContent')
+  await writeFile(
+    join(tempDir, 'note.md'),
+    '---\nname: test\nmetadata:\n  type: user\n---\nContent',
+  )
 
   const controller = new AbortController()
   const result = await scanMemoryFiles(tempDir, controller.signal)
 
   expect(result.length).toBe(1)
   expect(result[0].filename).toBe('note.md')
+  expect(result[0].type).toBe('user')
 })
 
 test('scanMemoryFiles ignores MEMORY.md', async () => {
   tempDir = await mkdtemp(join(tmpdir(), 'memoryScan-'))
   await writeFile(join(tempDir, 'MEMORY.md'), '# index')
-  await writeFile(join(tempDir, 'user_role.md'), '---\nname: role\ntype: user\n---\nContent')
+  await writeFile(
+    join(tempDir, 'user_role.md'),
+    '---\nname: role\nmetadata:\n  type: user\n---\nContent',
+  )
 
   const controller = new AbortController()
   const result = await scanMemoryFiles(tempDir, controller.signal)
@@ -42,12 +49,18 @@ test('scanMemoryFiles does not return .md files nested beyond max depth', async 
   tempDir = await mkdtemp(join(tmpdir(), 'memoryScan-'))
 
   // Shallow file - should be found
-  await writeFile(join(tempDir, 'shallow.md'), '---\nname: shallow\ntype: user\n---\nContent')
+  await writeFile(
+    join(tempDir, 'shallow.md'),
+    '---\nname: shallow\nmetadata:\n  type: user\n---\nContent',
+  )
 
   // Deeply nested file (depth 5) - should be excluded
   const deepDir = join(tempDir, 'd1', 'd2', 'd3', 'd4', 'd5')
   await mkdir(deepDir, { recursive: true })
-  await writeFile(join(deepDir, 'deep.md'), '---\nname: deep\ntype: user\n---\nContent')
+  await writeFile(
+    join(deepDir, 'deep.md'),
+    '---\nname: deep\nmetadata:\n  type: user\n---\nContent',
+  )
 
   const controller = new AbortController()
   const result = await scanMemoryFiles(tempDir, controller.signal)

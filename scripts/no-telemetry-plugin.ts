@@ -54,6 +54,9 @@ const _openBuildDefaults = {
   'tengu_hive_evidence': true,  // VERIFICATION_AGENT — read-only test/verification agent (upstream: false)
   'tengu_passport_quail': true, // EXTRACT_MEMORIES — enable memory extraction (upstream: false)
   'tengu_coral_fern': true,     // EXTRACT_MEMORIES — enable memory search in past context (upstream: false)
+  'tengu_moth_copse': true,     // Recall-surfaced memories: MEMORY.md leaves the system prompt and
+                                // relevant topic files are injected per turn instead, which is what
+                                // makes [[name]] links meaningful.
 };
 
 /* ── Known runtime feature keys (reference only) ───────────────────────

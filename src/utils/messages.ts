@@ -25,6 +25,7 @@ import type { AgentId } from 'src/types/ids.js'
 import { companionIntroText } from '../buddy/prompt.js'
 import { NO_CONTENT_MESSAGE } from '../constants/messages.js'
 import { OUTPUT_STYLE_CONFIG } from '../constants/outputStyles.js'
+import { MEMORY_RECALL_PREFIX } from '../memdir/memoryTypes.js'
 import { isAutoMemoryEnabled } from '../memdir/paths.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -3719,14 +3720,19 @@ Read the team config to discover your teammates' names. Check the task list peri
     }
     case 'relevant_memories': {
       return wrapMessagesInSystemReminder(
-        attachment.memories.map(m => {
+        attachment.memories.map((m, index) => {
           // Use the header stored at attachment-creation time so the
           // rendered bytes are stable across turns (prompt-cache hit).
           // Fall back to recomputing for resumed sessions that predate
           // the stored-header field.
           const header = m.header ?? memoryHeader(m.path, m.mtimeMs)
+          // OpenClaude: the prefix goes on the first block only — it is
+          // guidance about the whole batch, and repeating it per memory would
+          // invite the model to weigh each one separately as if the others did
+          // not apply.
+          const prefix = index === 0 ? `${MEMORY_RECALL_PREFIX}\n\n` : ''
           return createUserMessage({
-            content: `${header}\n\n${m.content}`,
+            content: `${prefix}${header}\n\n${m.content}`,
             isMeta: true,
           })
         }),

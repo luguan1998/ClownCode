@@ -25,10 +25,12 @@ import { getProjectDir } from '../utils/sessionStorage.js'
 import { getInitialSettings } from '../utils/settings/settings.js'
 import {
   MEMORY_FRONTMATTER_EXAMPLE,
-  TRUSTING_RECALL_SECTION,
-  TYPES_SECTION_INDIVIDUAL,
-  WHAT_NOT_TO_SAVE_SECTION,
-  WHEN_TO_ACCESS_SECTION,
+  MEMORY_LINK_CONVENTION,
+  MEMORY_RECALL_CONTEXT_NOTE,
+  MEMORY_SAVE_GUARD,
+  MEMORY_TYPE_GLOSSES,
+  memoryFileCapLine,
+  memoryIndexPointerLine,
 } from './memoryTypes.js'
 
 export const ENTRYPOINT_NAME = 'MEMORY.md'
@@ -185,13 +187,18 @@ function logMemoryDirCounts(
 }
 
 /**
- * Build the typed-memory behavioral instructions (without MEMORY.md content).
- * Constrains memories to a closed four-type taxonomy (user / feedback / project /
- * reference) — content that is derivable from the current project state (code
- * patterns, architecture, git history) is explicitly excluded.
+ * OpenClaude: build the typed-memory behavioral instructions (without
+ * MEMORY.md content).
  *
- * Individual-only variant: no `## Memory scope` section, no <scope> tags
- * in type blocks, and team/private qualifiers stripped from examples.
+ * Memories are constrained to four types (user / feedback / project /
+ * reference); content derivable from the current project state is excluded by
+ * MEMORY_SAVE_GUARD. The long per-type taxonomy lives in the `memory-types`
+ * skill — this prompt only carries the one-line glosses, so it stays small
+ * enough to sit in every request.
+ *
+ * The shape mirrors upstream's compact prompt: frontmatter, the `[[name]]`
+ * link convention, the gloss paragraph, the index pointer (or the per-file
+ * cap when no index is injected), and the save guard + recall note.
  *
  * Used by both buildMemoryPrompt (agent memory, includes content) and
  * loadMemoryPrompt (system prompt, content injected via user context instead).
@@ -202,59 +209,25 @@ export function buildMemoryLines(
   extraGuidelines?: string[],
   skipIndex = false,
 ): string[] {
-  const howToSave = skipIndex
-    ? [
-        '## How to save memories',
-        '',
-        'Write each memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:',
-        '',
-        ...MEMORY_FRONTMATTER_EXAMPLE,
-        '',
-        '- Keep the name, description, and type fields in memory files up-to-date with the content',
-        '- Organize memory semantically by topic, not chronologically',
-        '- Update or remove memories that turn out to be wrong or outdated',
-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
-      ]
-    : [
-        '## How to save memories',
-        '',
-        'Saving a memory is a two-step process:',
-        '',
-        '**Step 1** — write the memory to its own file (e.g., `user_role.md`, `feedback_testing.md`) using this frontmatter format:',
-        '',
-        ...MEMORY_FRONTMATTER_EXAMPLE,
-        '',
-        `**Step 2** — add a pointer to that file in \`${ENTRYPOINT_NAME}\`. \`${ENTRYPOINT_NAME}\` is an index, not a memory — each entry should be one line, under ~150 characters: \`- [Title](file.md) — one-line hook\`. It has no frontmatter. Never write memory content directly into \`${ENTRYPOINT_NAME}\`.`,
-        '',
-        `- \`${ENTRYPOINT_NAME}\` is always loaded into your conversation context — lines after ${MAX_ENTRYPOINT_LINES} will be truncated, so keep the index concise`,
-        '- Keep the name, description, and type fields in memory files up-to-date with the content',
-        '- Organize memory semantically by topic, not chronologically',
-        '- Update or remove memories that turn out to be wrong or outdated',
-        '- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.',
-      ]
+  // The index pointer is only meaningful when an index exists; the two index
+  // caps it references are enforced by truncateEntrypointContent().
+  const indexPointer = skipIndex
+    ? undefined
+    : memoryIndexPointerLine({ entrypointName: ENTRYPOINT_NAME })
 
   const lines: string[] = [
     `# ${displayName}`,
     '',
-    `You have a persistent, file-based memory system at \`${memoryDir}\`. ${DIR_EXISTS_GUIDANCE}`,
+    `You have a persistent file-based memory at \`${memoryDir}\`. ${DIR_EXISTS_GUIDANCE} Each memory is one file holding one fact, with frontmatter:`,
     '',
-    "You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.",
+    ...MEMORY_FRONTMATTER_EXAMPLE,
     '',
-    'If the user explicitly asks you to remember something, save it immediately as whichever type fits best. If they ask you to forget something, find and remove the relevant entry.',
+    MEMORY_LINK_CONVENTION,
     '',
-    ...TYPES_SECTION_INDIVIDUAL,
-    ...WHAT_NOT_TO_SAVE_SECTION,
+    MEMORY_TYPE_GLOSSES,
     '',
-    ...howToSave,
-    '',
-    ...WHEN_TO_ACCESS_SECTION,
-    '',
-    ...TRUSTING_RECALL_SECTION,
-    '',
-    '## Memory and other forms of persistence',
-    'Memory is one of several persistence mechanisms available to you as you assist the user in a given conversation. The distinction is often that memory can be recalled in future conversations and should not be used for persisting information that is only useful within the scope of the current conversation.',
-    '- When to use or update a plan instead of memory: If you are about to start a non-trivial implementation task and would like to reach alignment with the user on your approach you should use a Plan rather than saving this information to memory. Similarly, if you already have a plan within the conversation and you have changed your approach persist that change by updating the plan rather than saving a memory.',
-    '- When to use or update tasks instead of memory: When you need to break your work in current conversation into discrete steps or keep track of your progress use tasks instead of saving to memory. Tasks are great for persisting information about the work that needs to be done in the current conversation, but memory should be reserved for information that will be useful in future conversations.',
+    ...(indexPointer ? [indexPointer, ''] : [memoryFileCapLine(), '']),
+    `${MEMORY_SAVE_GUARD} ${MEMORY_RECALL_CONTEXT_NOTE}`,
     '',
     ...(extraGuidelines ?? []),
     '',
@@ -354,7 +327,7 @@ function buildAssistantDailyLogPrompt(skipIndex = false): string {
     '- Pointers to external systems (dashboards, Linear projects, Slack channels)',
     '- Anything the user explicitly asks you to remember',
     '',
-    ...WHAT_NOT_TO_SAVE_SECTION,
+    MEMORY_SAVE_GUARD,
     '',
     ...(skipIndex
       ? []

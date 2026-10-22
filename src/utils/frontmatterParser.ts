@@ -11,8 +11,11 @@ export type FrontmatterData = {
   // YAML can return null for keys with no value (e.g., "key:" with nothing after)
   'allowed-tools'?: string | string[] | null
   description?: string | null
-  // Memory type: 'user', 'feedback', 'project', or 'reference'
-  // Only applicable to memory files; narrowed via parseMemoryType() in src/memdir/memoryTypes.ts
+  // Free-form map. Carries the memory taxonomy on memory files
+  // (`metadata.type`: 'user' | 'feedback' | 'project' | 'reference', narrowed
+  // by memoryTypeFromFrontmatter() in src/memdir/memoryTypes.ts) alongside
+  // bookkeeping the writer wants to keep.
+  metadata?: Record<string, unknown> | null
   type?: string | null
   'argument-hint'?: string | null
   when_to_use?: string | null

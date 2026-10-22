@@ -8,7 +8,7 @@ import { readdir } from 'fs/promises'
 import { basename, join } from 'path'
 import { parseFrontmatter } from '../utils/frontmatterParser.js'
 import { readFileInRange } from '../utils/readFileInRange.js'
-import { type MemoryType, parseMemoryType } from './memoryTypes.js'
+import { type MemoryType, memoryTypeFromFrontmatter } from './memoryTypes.js'
 
 export type MemoryHeader = {
   filename: string
@@ -65,7 +65,10 @@ export async function scanMemoryFiles(
           filePath,
           mtimeMs,
           description: frontmatter.description || null,
-          type: parseMemoryType(frontmatter.type),
+          // OpenClaude: the type lives under `metadata:` so memory files can
+          // carry other bookkeeping fields without colliding with the skill and
+          // command frontmatter keys this parser also serves.
+          type: memoryTypeFromFrontmatter(frontmatter),
         }
       }),
     )
