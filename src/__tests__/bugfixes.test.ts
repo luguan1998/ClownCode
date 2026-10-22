@@ -17,24 +17,19 @@ const file = (relative: string) => Bun.file(resolve(SRC, relative))
 // ---------------------------------------------------------------------------
 // Fix 1: Gemini `store: false` rejection
 // ---------------------------------------------------------------------------
-describe('Gemini store field fix', () => {
-  test('isGeminiMode is imported and used in openaiShim', async () => {
+describe('OpenAI-compatible request body', () => {
+  test('openaiShim has no vendor-specific store handling', async () => {
     const content = await file('services/api/openaiShim.ts').text()
 
-    // Verify the fix: store deletion should check for Gemini mode
-    expect(content).toContain('isGeminiMode()')
-    expect(content).toContain("mistral and gemini don't recognize body.store")
-    // Ensure the delete body.store is guarded for both Mistral and Gemini
-    expect(content).toMatch(/isMistral\s*\|\|\s*isGeminiMode\(\)/)
+    // OpenClaude removed vendor-specific branches.
+    expect(content).not.toContain('isGeminiMode()')
+    expect(content).not.toContain('isMistralMode()')
   })
 
-  test('store: false is still set by default (OpenAI needs it)', async () => {
+  test('store: false is still set by default for chat completions', async () => {
     const content = await file('services/api/openaiShim.ts').text()
 
-    // The body should still have store: false by default
     expect(content).toMatch(/store:\s*false/)
-    // But it should be deleted for non-OpenAI providers
-    expect(content).toMatch(/delete body\.store/)
   })
 })
 
@@ -219,22 +214,12 @@ describe('MCP tool timeout fix', () => {
 // Cross-cutting: verify no regressions
 // ---------------------------------------------------------------------------
 describe('Regression checks', () => {
-  test('store field is still set for OpenAI (not deleted unconditionally)', async () => {
+  test('store field is still set for OpenAI chat completions', async () => {
     const content = await file('services/api/openaiShim.ts').text()
 
-    // store: false should exist in body construction
     expect(content).toMatch(/store:\s*false/)
-    // But delete body.store should be conditional (guarded by if)
-    const deleteLines = content.split('\n').filter(l => l.includes('delete body.store'))
-    expect(deleteLines.length).toBeGreaterThan(0)
-    // Verify the delete is inside a conditional block by checking surrounding context
-    for (const line of deleteLines) {
-      const trimmed = line.trim()
-      // Should be either inside an if block (indented delete) or a comment
-      expect(
-        trimmed.startsWith('delete') && !trimmed.includes('// unconditional'),
-      ).toBe(true)
-    }
+    // OpenClaude removed the vendor-specific store deletion path.
+    expect(content).not.toContain('delete body.store')
   })
 })
 

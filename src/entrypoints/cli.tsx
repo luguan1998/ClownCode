@@ -1,12 +1,5 @@
 import { feature } from 'bun:bundle';
-import {
-  applyProfileEnvToProcessEnv,
-  buildStartupEnvFromProfile,
-} from '../utils/providerProfile.js'
-import {
-  getProviderValidationError,
-  validateProviderEnvForStartupOrExit,
-} from '../utils/providerValidation.js'
+import { validateProviderEnvForStartupOrExit } from '../utils/providerValidation.js'
 
 // OpenClaude: polyfill globalThis.File for Node < 20.
 // undici v7 references `File` at module evaluation time (webidl type
@@ -84,52 +77,17 @@ async function main(): Promise<void> {
     return;
   }
 
-  // --provider: set provider env vars early so saved-profile resolution,
-  // validation, and the startup banner all see the intended provider/model.
-  if (args.includes('--provider')) {
-    const { applyProviderFlagFromArgs } = await import('../utils/providerFlag.js');
-    const result = applyProviderFlagFromArgs(args);
-    if (result?.error) {
-      // biome-ignore lint/suspicious/noConsole:: intentional error output
-      console.error(`Error: ${result.error}`);
-      process.exit(1);
-    }
-  }
-
   // Enable configs first so we can read settings
   {
     const { enableConfigs } = await import('../utils/config.js')
     enableConfigs()
   }
 
-  // Apply settings.env from user settings (includes GitHub provider settings from /onboard-github)
+  // Apply settings.env. OpenClaude is configured exclusively through
+  // settings.json env (ANTHROPIC_BASE_URL / OPENAI_BASE_URL, API keys, model).
   {
     const { applySafeConfigEnvironmentVariables } = await import('../utils/managedEnv.js')
     applySafeConfigEnvironmentVariables()
-  }
-
-  const startupEnv = await buildStartupEnvFromProfile({
-    processEnv: process.env,
-  })
-  if (startupEnv !== process.env) {
-    const startupProfileError = await getProviderValidationError(startupEnv)
-    if (startupProfileError) {
-      console.error(
-        `Warning: ignoring saved provider profile. ${startupProfileError}`,
-      )
-    } else {
-      applyProfileEnvToProcessEnv(process.env, startupEnv)
-    }
-  }
-
-  // Hydrate GitHub credentials after profile is applied so CLAUDE_CODE_USE_GITHUB from profile is available
-  {
-    const {
-      hydrateGithubModelsTokenFromSecureStorage,
-      refreshGithubModelsTokenIfNeeded,
-    } = await import('../utils/githubModelsCredentials.js')
-    await refreshGithubModelsTokenIfNeeded()
-    hydrateGithubModelsTokenFromSecureStorage()
   }
 
   await validateProviderEnvForStartupOrExit()

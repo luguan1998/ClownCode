@@ -6,7 +6,6 @@ import { getCanonicalName } from './model/model.js'
 import { get3PModelCapabilityOverride } from './model/modelSupportOverrides.js'
 import { getAPIProvider } from './model/providers.js'
 import { getSettingsWithErrors } from './settings/settings.js'
-import { isZaiBaseUrl, isZaiGlmModel } from './zaiProvider.js'
 
 export type ThinkingConfig =
   | { type: 'adaptive' }
@@ -109,13 +108,6 @@ export function modelSupportsThinking(model: string): boolean {
   if (
     canonical.startsWith('deepseek-v4-') ||
     canonical === 'deepseek-reasoner'
-  ) {
-    return true
-  }
-  if (
-    provider === 'openai' &&
-    isZaiBaseUrl(process.env.OPENAI_BASE_URL ?? process.env.OPENAI_API_BASE) &&
-    isZaiGlmModel(canonical)
   ) {
     return true
   }

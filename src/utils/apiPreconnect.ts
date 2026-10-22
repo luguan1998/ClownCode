@@ -23,8 +23,6 @@
  * - Bedrock/Vertex/Foundry (different endpoints, different auth)
  */
 
-import { getOauthConfig } from '../constants/oauth.js'
-import { isEnvTruthy } from './envUtils.js'
 import { getAPIProvider } from './model/providers.js'
 
 let fired = false
@@ -33,19 +31,11 @@ export function preconnectAnthropicApi(): void {
   if (fired) return
   fired = true
 
-  // Third-party providers should not warm a connection to Anthropic.
+  // Only the native Anthropic transport uses this pool.
   if (getAPIProvider() !== 'firstParty') {
     return
   }
 
-  // Skip if using a cloud provider — different endpoint + auth
-  if (
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_BEDROCK) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_VERTEX) ||
-    isEnvTruthy(process.env.CLAUDE_CODE_USE_FOUNDRY)
-  ) {
-    return
-  }
   // Skip if proxy/mTLS/unix — SDK's custom dispatcher won't reuse this pool
   if (
     process.env.HTTPS_PROXY ||
@@ -59,11 +49,11 @@ export function preconnectAnthropicApi(): void {
     return
   }
 
-  // Use configured base URL (staging, local, or custom gateway). Covers
-  // ANTHROPIC_BASE_URL env + USE_STAGING_OAUTH + USE_LOCAL_OAUTH in one lookup.
-  // NODE_EXTRA_CA_CERTS no longer a skip — init.ts applied it before this fires.
-  const baseUrl =
-    process.env.ANTHROPIC_BASE_URL || getOauthConfig().BASE_API_URL
+  // OpenClaude: only preconnect to an explicitly configured endpoint.
+  const baseUrl = process.env.ANTHROPIC_BASE_URL
+  if (!baseUrl) {
+    return
+  }
 
   // Fire and forget. HEAD means no response body — the connection is eligible
   // for keep-alive pool reuse immediately after headers arrive. 10s timeout
