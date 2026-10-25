@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { chmod, mkdir, readdir, readFile, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import {
@@ -23,29 +22,6 @@ function getSessionsDir(): string {
 }
 
 /**
- * Kind override from env. Set by the spawner (`claude --bg`, daemon
- * supervisor) so the child can register without the parent having to
- * write the file for it — cleanup-on-exit wiring then works for free.
- * Gated so the env-var string is DCE'd from external builds.
- */
-function envSessionKind(): SessionKind | undefined {
-  if (feature('BG_SESSIONS')) {
-    const k = process.env.CLAUDE_CODE_SESSION_KIND
-    if (k === 'bg' || k === 'daemon' || k === 'daemon-worker') return k
-  }
-  return undefined
-}
-
-/**
- * True when this REPL is running inside a `claude --bg` tmux session.
- * Exit paths (/exit, ctrl+c, ctrl+d) should detach the attached client
- * instead of killing the process.
- */
-export function isBgSession(): boolean {
-  return envSessionKind() === 'bg'
-}
-
-/**
  * Write a PID file for this session and register cleanup.
  *
  * Registers all top-level sessions — interactive CLI, SDK (vscode, desktop,
@@ -59,7 +35,7 @@ export function isBgSession(): boolean {
 export async function registerSession(): Promise<boolean> {
   if (getAgentId() != null) return false
 
-  const kind: SessionKind = envSessionKind() ?? 'interactive'
+  const kind: SessionKind = 'interactive'
   const dir = getSessionsDir()
   const pidFile = join(dir, `${process.pid}.json`)
 
@@ -83,10 +59,10 @@ export async function registerSession(): Promise<boolean> {
         startedAt: Date.now(),
         kind,
         entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT,
-        ...(feature('UDS_INBOX')
+        ...(false
           ? { messagingSocketPath: process.env.CLAUDE_CODE_MESSAGING_SOCKET }
           : {}),
-        ...(feature('BG_SESSIONS')
+        ...(false
           ? {
               name: process.env.CLAUDE_CODE_SESSION_NAME,
               logPath: process.env.CLAUDE_CODE_SESSION_LOG,
@@ -145,19 +121,6 @@ export async function updateSessionBridgeId(
   bridgeSessionId: string | null,
 ): Promise<void> {
   await updatePidFile({ bridgeSessionId })
-}
-
-/**
- * Push live activity state for `claude ps`. Fire-and-forget from REPL's
- * status-change effect — a dropped write just means ps falls back to
- * transcript-tail derivation for one refresh.
- */
-export async function updateSessionActivity(patch: {
-  status?: SessionStatus
-  waitingFor?: string
-}): Promise<void> {
-  if (!feature('BG_SESSIONS')) return
-  await updatePidFile({ ...patch, updatedAt: Date.now() })
 }
 
 /**

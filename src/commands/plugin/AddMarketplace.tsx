@@ -74,9 +74,6 @@ export function AddMarketplace({
       });
       clearAllCaches();
       let sourceType = parsed.source;
-      if (parsed.source === 'github') {
-        sourceType = parsed.repo as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS;
-      }
       logEvent('tengu_marketplace_added', {
         source_type: sourceType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });

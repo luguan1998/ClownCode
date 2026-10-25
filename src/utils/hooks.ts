@@ -10,7 +10,6 @@ import { wrapSpawn } from './ShellCommand.js'
 import { TaskOutput } from './task/TaskOutput.js'
 import { getCwd } from './cwd.js'
 import { randomUUID } from 'crypto'
-import { feature } from 'bun:bundle'
 import { formatShellPrefixCommand } from './bash/shellPrefix.js'
 import {
   getHookEnvFilePath,
@@ -111,7 +110,7 @@ import type {
 import type { StatusLineCommandInput } from '../types/statusLine.js'
 import type { ElicitResult } from '@modelcontextprotocol/sdk/types.js'
 import type { FileSuggestionCommandInput } from '../types/fileSuggestion.js'
-import type { HookResultMessage } from 'src/types/message.js'
+import type { HookOutputMessage } from 'src/types/message.js'
 import chalk from 'chalk'
 import type {
   HookMatcher,
@@ -165,146 +164,8 @@ import type { AppState } from '../state/AppState.js'
 import { jsonStringify, jsonParse } from './slowOperations.js'
 import { isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
-import { getAgentName, getTeamName, getTeammateColor } from './teammate.js'
-import type {
-  HookChainOutcome,
-  HookChainRuntimeContext,
-  SpawnFallbackAgentRequest,
-  SpawnFallbackAgentResponse,
-} from './hookChains.js'
 
 const TOOL_HOOK_EXECUTION_TIMEOUT_MS = 10 * 60 * 1000
-
-function normalizeFallbackAgentModel(
-  model: string | undefined,
-): 'sonnet' | 'opus' | 'haiku' | undefined {
-  if (model === 'sonnet' || model === 'opus' || model === 'haiku') {
-    return model
-  }
-  return undefined
-}
-
-async function launchFallbackAgentFromHookChains(
-  request: SpawnFallbackAgentRequest,
-  toolUseContext: ToolUseContext,
-  canUseTool: CanUseToolFn,
-): Promise<SpawnFallbackAgentResponse> {
-  try {
-    const { AgentTool } = await import('../tools/AgentTool/AgentTool.js')
-    const normalizedModel = normalizeFallbackAgentModel(request.model)
-    const result = await AgentTool.call(
-      {
-        prompt: request.prompt,
-        description: request.description,
-        run_in_background: true,
-        ...(request.agentType ? { subagent_type: request.agentType } : {}),
-        ...(normalizedModel ? { model: normalizedModel } : {}),
-      },
-      toolUseContext,
-      canUseTool,
-      createAssistantMessage({ content: [] }),
-    )
-
-    const data = result.data as
-      | {
-          status?: string
-          agentId?: string
-          agent_id?: string
-        }
-      | undefined
-    const status = data?.status
-
-    if (
-      status === 'async_launched' ||
-      status === 'completed' ||
-      status === 'remote_launched' ||
-      status === 'teammate_spawned'
-    ) {
-      return {
-        launched: true,
-        agentId: data?.agentId ?? data?.agent_id,
-      }
-    }
-
-    return {
-      launched: true,
-      reason:
-        status !== undefined
-          ? `Fallback launched with status ${status}`
-          : undefined,
-    }
-  } catch (error) {
-    return {
-      launched: false,
-      reason: `Fallback launch failed: ${errorMessage(error)}`,
-    }
-  }
-}
-
-async function dispatchHookChainFromHookRuntime(args: {
-  eventName: 'PostToolUseFailure' | 'TaskCompleted'
-  outcome: HookChainOutcome
-  payload: Record<string, unknown>
-  signal?: AbortSignal
-  toolUseContext?: ToolUseContext
-}): Promise<void> {
-  try {
-    if (!feature('HOOK_CHAINS')) {
-      return
-    }
-
-    const { dispatchHookChainsForEvent } = await import('./hookChains.js')
-
-    const runtime: HookChainRuntimeContext = {
-      signal: args.signal,
-      senderName: getAgentName() ?? undefined,
-      senderColor: getTeammateColor() ?? undefined,
-      teamName: getTeamName() ?? undefined,
-    }
-
-    const chainDepth = args.toolUseContext?.queryTracking?.depth
-    if (typeof chainDepth === 'number' && Number.isFinite(chainDepth)) {
-      runtime.chainDepth = chainDepth
-    }
-
-    const hookChainsCanUseTool = (
-      args.toolUseContext as
-        | (ToolUseContext & { hookChainsCanUseTool?: CanUseToolFn })
-        | undefined
-    )?.hookChainsCanUseTool
-
-    if (args.toolUseContext) {
-      runtime.onSpawnFallbackAgent = request => {
-        if (!hookChainsCanUseTool) {
-          return Promise.resolve({
-            launched: false,
-            reason:
-              'Fallback action requires canUseTool in this hook runtime context',
-          })
-        }
-
-        return launchFallbackAgentFromHookChains(
-          request,
-          args.toolUseContext!,
-          hookChainsCanUseTool,
-        )
-      }
-    }
-
-    await dispatchHookChainsForEvent({
-      event: {
-        eventName: args.eventName,
-        outcome: args.outcome,
-        payload: args.payload,
-      },
-      runtime,
-    })
-  } catch (error) {
-    logForDebugging(
-      `[hook-chains] Dispatch failed for ${args.eventName}: ${errorMessage(error)}`,
-    )
-  }
-}
 
 /**
  * SessionEnd hooks run during shutdown/clear and need a much tighter bound
@@ -477,7 +338,7 @@ export interface HookBlockingError {
 export type ElicitationResponse = ElicitResult
 
 export interface HookResult {
-  message?: HookResultMessage
+  message?: HookOutputMessage
   systemMessage?: string
   blockingError?: HookBlockingError
   outcome: 'success' | 'blocking' | 'non_blocking_error' | 'cancelled'
@@ -498,7 +359,7 @@ export interface HookResult {
 }
 
 export type AggregatedHookResult = {
-  message?: HookResultMessage
+  message?: HookOutputMessage
   blockingError?: HookBlockingError
   preventContinuation?: boolean
   stopReason?: string
@@ -3676,18 +3537,6 @@ export async function* executePostToolUseFailureHooks<ToolInput>(
       yield result
     }
   }
-
-  await dispatchHookChainFromHookRuntime({
-    eventName: 'PostToolUseFailure',
-    outcome: 'failed',
-    payload: {
-      ...hookInput,
-      hook_blocking_error_count: blockingHookCount,
-      hook_execution_skipped: !hasPostToolFailureHooks,
-    },
-    signal,
-    toolUseContext,
-  })
 }
 
 export async function* executePermissionDeniedHooks<ToolInput>(
@@ -3989,19 +3838,6 @@ export async function* executeTaskCompletedHooks(
     }
     yield result
   }
-
-  await dispatchHookChainFromHookRuntime({
-    eventName: 'TaskCompleted',
-    outcome:
-      blockingHookCount > 0 || preventedContinuation ? 'failed' : 'success',
-    payload: {
-      ...hookInput,
-      hook_blocking_error_count: blockingHookCount,
-      hook_prevented_continuation: preventedContinuation,
-    },
-    signal,
-    toolUseContext,
-  })
 }
 
 /**

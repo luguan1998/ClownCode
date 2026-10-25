@@ -36,7 +36,7 @@ afterEach(() => {
 })
 
 test('logs a warning when OPENAI_BASE_URL is literal undefined', async () => {
-  const debugSpy = mock(() => {})
+  const debugSpy = mock((..._args: any[]) => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
   }))
@@ -65,7 +65,7 @@ test('logs a warning when OPENAI_BASE_URL is literal undefined', async () => {
 })
 
 test('does not warn for OPENAI_API_BASE when OPENAI_BASE_URL is active', async () => {
-  const debugSpy = mock(() => {})
+  const debugSpy = mock((..._args: any[]) => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
   }))
@@ -93,7 +93,7 @@ test('does not warn for OPENAI_API_BASE when OPENAI_BASE_URL is active', async (
 })
 
 test('ANTHROPIC_BASE_URL wins over OPENAI_BASE_URL without warnings', async () => {
-  const debugSpy = mock(() => {})
+  const debugSpy = mock((..._args: any[]) => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
   }))

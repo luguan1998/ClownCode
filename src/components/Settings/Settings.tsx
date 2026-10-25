@@ -85,20 +85,11 @@ export function Settings(t0) {
   } else {
     t5 = $[11];
   }
-  let t7;
-  if ($[13] !== contentHeight) {
-    t7 = false ? [<Tab key="gates" title="Gates"><Gates onOwnsEscChange={setGatesOwnsEsc} contentHeight={contentHeight} /></Tab>] : [];
-    $[13] = contentHeight;
-    $[14] = t7;
-  } else {
-    t7 = $[14];
-  }
   let t8;
-  if ($[15] !== t4 || $[16] !== t5 || $[17] !== t7) {
-    t8 = [t4, t5, ...t7];
+  if ($[15] !== t4 || $[16] !== t5) {
+    t8 = [t4, t5];
     $[15] = t4;
     $[16] = t5;
-    $[17] = t7;
     $[18] = t8;
   } else {
     t8 = $[18];

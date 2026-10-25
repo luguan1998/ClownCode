@@ -1,5 +1,4 @@
 import { c as _c } from "react-compiler-runtime";
-import { feature } from 'bun:bundle';
 import * as React from 'react';
 import type { AutoUpdaterResult } from '../utils/autoUpdater.js';
 import { isAutoUpdaterDisabled } from '../utils/config.js';
@@ -26,14 +25,14 @@ export function AutoUpdaterWrapper(t0) {
     showSuccessMessage,
     verbose
   } = t0;
-  const [useNativeInstaller, setUseNativeInstaller] = React.useState(null);
-  const [isPackageManager, setIsPackageManager] = React.useState(null);
+  const [useNativeInstaller, setUseNativeInstaller] = React.useState<boolean | null>(null);
+  const [isPackageManager, setIsPackageManager] = React.useState<boolean | null>(null);
   let t1;
   let t2;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = () => {
       const checkInstallation = async function checkInstallation() {
-        if (feature("SKIP_DETECTION_WHEN_AUTOUPDATES_DISABLED") && isAutoUpdaterDisabled()) {
+        if (false && isAutoUpdaterDisabled()) {
           logForDebugging("AutoUpdaterWrapper: Skipping detection, auto-updates disabled");
           return;
         }

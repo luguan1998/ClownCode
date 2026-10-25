@@ -65,7 +65,7 @@ function ModelPickerWrapper(t0) {
       if (effort !== undefined) {
         message = message + ` with ${chalk.bold(effort)} effort`;
       }
-      let wasFastModeToggledOn = undefined;
+      let wasFastModeToggledOn: boolean | undefined;
       if (isFastModeEnabled()) {
         clearFastModeCooldown();
         if (!isFastModeSupportedByModel(model) && isFastMode) {
@@ -208,7 +208,7 @@ function SetModelAndClose({
         mainLoopModelForSession: null
       }));
       let message = `Set model to ${chalk.bold(renderModelLabel(modelValue))}`;
-      let wasFastModeToggledOn = undefined;
+      let wasFastModeToggledOn: boolean | undefined;
       if (isFastModeEnabled()) {
         clearFastModeCooldown();
         if (!isFastModeSupportedByModel(modelValue) && isFastMode) {
@@ -223,7 +223,7 @@ function SetModelAndClose({
           wasFastModeToggledOn = true;
         }
       }
-      if (isBilledAsExtraUsage(modelValue, wasFastModeToggledOn === true, isOpus1mMergeEnabled())) {
+      if (isBilledAsExtraUsage(modelValue ?? '', wasFastModeToggledOn === true, isOpus1mMergeEnabled())) {
         message += ` · Billed as extra usage`;
       }
       if (wasFastModeToggledOn === false) {

@@ -81,7 +81,8 @@ export function hasContentAfterIndex(messages: RenderableMessage[], index: numbe
     // Collapsible grouped_tool_use messages arrive transiently before being
     // merged into the current collapsed group on the next render cycle
     if (msg?.type === 'grouped_tool_use') {
-      const firstInput = msg.messages[0]?.message.content[0]?.input;
+      const firstBlock = msg.messages[0]?.message.content[0];
+      const firstInput = firstBlock?.type === 'tool_use' ? firstBlock.input : undefined;
       if (getToolSearchOrReadInfo(msg.toolName, firstInput, tools).isCollapsible) {
         continue;
       }
@@ -90,7 +91,7 @@ export function hasContentAfterIndex(messages: RenderableMessage[], index: numbe
   }
   return false;
 }
-function MessageRowImpl(t0) {
+function MessageRowImpl(t0: Props) {
   const $ = _c(64);
   const {
     message: msg,
@@ -110,6 +111,11 @@ function MessageRowImpl(t0) {
     isLoading,
     lookups
   } = t0;
+  // Progress messages are dropped from the render pipeline in Messages.tsx;
+  // `Message` has no case for one, so this keeps the type union honest.
+  if (msg.type === "progress") {
+    return null;
+  }
   const isTranscriptMode = screen === "transcript";
   const isGrouped = msg.type === "grouped_tool_use";
   const isCollapsed = msg.type === "collapsed_read_search";

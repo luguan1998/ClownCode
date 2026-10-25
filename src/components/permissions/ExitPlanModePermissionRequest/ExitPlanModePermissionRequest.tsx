@@ -1,13 +1,11 @@
-import { feature } from 'bun:bundle';
 import type { UUID } from 'crypto';
 import figures from 'figures';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNotifications } from 'src/context/notifications.js';
 import { type AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS, logEvent } from 'src/services/analytics/index.js';
-import { useAppState, useAppStateStore, useSetAppState } from 'src/state/AppState.js';
+import { useAppState, useSetAppState } from 'src/state/AppState.js';
 import { getSdkBetas, getSessionId, isSessionPersistenceDisabled, setHasExitedPlanMode, setNeedsAutoModeExitAttachment, setNeedsPlanModeExitAttachment } from '../../../bootstrap/state.js';
 import { generateSessionName } from '../../../commands/rename/generateSessionName.js';
-import { launchUltraplan } from '../../../commands/ultraplan.js';
 import type { KeyboardEvent } from '../../../ink/events/keyboard-event.js';
 import { Box, Text } from '../../../ink.js';
 import type { AppState } from '../../../state/AppStateStore.js';
@@ -21,7 +19,6 @@ import { getExternalEditor } from '../../../utils/editor.js';
 import { getDisplayPath } from '../../../utils/file.js';
 import { toIDEDisplayName } from '../../../utils/ide.js';
 import { logError } from '../../../utils/log.js';
-import { enqueuePendingNotification } from '../../../utils/messageQueueManager.js';
 import { createUserMessage } from '../../../utils/messages.js';
 import { getMainLoopModel, getRuntimeMainLoopModel } from '../../../utils/model/model.js';
 import { createPromptRuleContent, isClassifierPermissionsEnabled, PROMPT_PREFIX } from '../../../utils/permissions/bashClassifier.js';
@@ -40,14 +37,14 @@ import type { PermissionRequestProps } from '../PermissionRequest.js';
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER') ? require('../../../utils/permissions/autoModeState.js') as typeof import('../../../utils/permissions/autoModeState.js') : null;
+const autoModeStateModule = true ? require('../../../utils/permissions/autoModeState.js') as typeof import('../../../utils/permissions/autoModeState.js') : null;
 import type { Base64ImageSource, ImageBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs';
 /* eslint-enable @typescript-eslint/no-require-imports */
 import type { PastedContent } from '../../../utils/config.js';
 import type { ImageDimensions } from '../../../utils/imageResizer.js';
 import { maybeResizeAndDownsampleImageBlock } from '../../../utils/imageResizer.js';
 import { cacheImagePath, storeImage } from '../../../utils/imageStore.js';
-type ResponseValue = 'yes-bypass-permissions' | 'yes-accept-edits' | 'yes-accept-edits-keep-context' | 'yes-default-keep-context' | 'yes-resume-auto-mode' | 'yes-auto-clear-context' | 'ultraplan' | 'no';
+type ResponseValue = 'yes-bypass-permissions' | 'yes-accept-edits' | 'yes-accept-edits-keep-context' | 'yes-default-keep-context' | 'yes-resume-auto-mode' | 'yes-auto-clear-context' | 'no';
 
 /**
  * Build permission updates for plan approval, including prompt-based rules if provided.
@@ -124,7 +121,6 @@ export function ExitPlanModePermissionRequest({
 }: PermissionRequestProps): React.ReactNode {
   const toolPermissionContext = useAppState(s => s.toolPermissionContext);
   const setAppState = useSetAppState();
-  const store = useAppStateStore();
   const {
     addNotification
   } = useNotifications();
@@ -135,13 +131,6 @@ export function ExitPlanModePermissionRequest({
   const [pastedContents, setPastedContents] = useState<Record<number, PastedContent>>({});
   const nextPasteIdRef = useRef(0);
   const showClearContext = useAppState(s => s.settings.showClearContextOnPlanAccept) ?? false;
-  const ultraplanSessionUrl = useAppState(s => s.ultraplanSessionUrl);
-  const ultraplanLaunching = useAppState(s => s.ultraplanLaunching);
-  // Hide the Ultraplan button while a session is active or launching —
-  // selecting it would dismiss the dialog and reject locally before
-  // launchUltraplan can notice the session exists and return "already polling".
-  // feature() must sit directly in an if/ternary (bun:bundle DCE constraint).
-  const showUltraplan = feature('ULTRAPLAN') ? !ultraplanSessionUrl && !ultraplanLaunching : false;
   const usage = toolUseConfirm.assistantMessage.message.usage;
   const {
     mode,
@@ -150,12 +139,11 @@ export function ExitPlanModePermissionRequest({
   } = toolPermissionContext;
   const options = useMemo(() => buildPlanApprovalOptions({
     showClearContext,
-    showUltraplan,
     usedPercent: showClearContext ? getContextUsedPercent(usage, mode) : null,
     isAutoModeAvailable,
     isBypassPermissionsModeAvailable,
     onFeedbackChange: setPlanFeedback
-  }), [showClearContext, showUltraplan, usage, mode, isAutoModeAvailable, isBypassPermissionsModeAvailable]);
+  }), [showClearContext, usage, mode, isAutoModeAvailable, isBypassPermissionsModeAvailable]);
   function onImagePaste(base64Image: string, mediaType?: string, filename?: string, dimensions?: ImageDimensions, _sourcePath?: string) {
     const pasteId = nextPasteIdRef.current++;
     const newContent: PastedContent = {
@@ -275,32 +263,6 @@ export function ExitPlanModePermissionRequest({
     const trimmedFeedback = planFeedback.trim();
     const acceptFeedback = trimmedFeedback || undefined;
 
-    // Ultraplan: reject locally, teleport the plan to CCR as a seed draft.
-    // Dialog dismisses immediately so the query loop unblocks; the teleport
-    // runs detached and its launch message lands via the command queue.
-    if (value === 'ultraplan') {
-      logEvent('tengu_plan_exit', {
-        planLengthChars: currentPlan.length,
-        outcome: 'ultraplan' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
-        planStructureVariant
-      });
-      onDone();
-      onReject();
-      toolUseConfirm.onReject('Plan being refined via Ultraplan — please wait for the result.');
-      void launchUltraplan({
-        blurb: '',
-        seedPlan: currentPlan,
-        getAppState: store.getState,
-        setAppState: store.setState,
-        signal: new AbortController().signal
-      }).then(msg => enqueuePendingNotification({
-        value: msg,
-        mode: 'task-notification'
-      })).catch(logError);
-      return;
-    }
-
     // V1: pass plan in input. V2: plan is on disk, but if the user edited it
     // via Ctrl+G we pass it through so the tool echoes the edit in tool_result
     // (otherwise the model never sees the user's changes).
@@ -310,7 +272,7 @@ export function ExitPlanModePermissionRequest({
 
     // If auto was active during plan (from auto mode or opt-in) and NOT going
     // to auto, deactivate auto + restore permissions + fire exit attachment.
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       const goingToAuto = (value === 'yes-resume-auto-mode' || value === 'yes-auto-clear-context') && isAutoModeGateEnabled();
       // isAutoModeActive() is the authoritative signal — prePlanMode/
       // strippedDangerousRules are stale after transitionPlanAutoMode
@@ -332,7 +294,7 @@ export function ExitPlanModePermissionRequest({
     // Clear-context options: set pending plan implementation and reject the dialog
     // The REPL will handle context clear and trigger a fresh query
     // Keep-context options skip this block and go through the normal flow below
-    const isResumeAutoOption = feature('TRANSCRIPT_CLASSIFIER') ? value === 'yes-resume-auto-mode' : false;
+    const isResumeAutoOption = true ? value === 'yes-resume-auto-mode' : false;
     const isKeepContextOption = value === 'yes-accept-edits-keep-context' || value === 'yes-default-keep-context' || isResumeAutoOption;
     if (value !== 'no') {
       autoNameSessionFromPlan(currentPlan, setAppState, !isKeepContextOption);
@@ -344,7 +306,7 @@ export function ExitPlanModePermissionRequest({
         mode = 'bypassPermissions';
       } else if (value === 'yes-accept-edits') {
         mode = 'acceptEdits';
-      } else if (feature('TRANSCRIPT_CLASSIFIER') && value === 'yes-auto-clear-context' && isAutoModeGateEnabled()) {
+      } else if (true && value === 'yes-auto-clear-context' && isAutoModeGateEnabled()) {
         // REPL's processInitialMessage handles stripDangerousPermissions + mode,
         // but does NOT set autoModeActive. Gate-off falls through to 'default'.
         mode = 'auto';
@@ -397,7 +359,7 @@ export function ExitPlanModePermissionRequest({
     // Handle auto keep-context option — needs special handling because
     // buildPermissionUpdates maps auto to 'default' via toExternalPermissionMode.
     // We set the mode directly via setAppState and sync the bootstrap state.
-    if (feature('TRANSCRIPT_CLASSIFIER') && value === 'yes-resume-auto-mode' && isAutoModeGateEnabled()) {
+    if (true && value === 'yes-resume-auto-mode' && isAutoModeGateEnabled()) {
       logEvent('tengu_plan_exit', {
         planLengthChars: currentPlan.length,
         outcome: value as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -430,7 +392,7 @@ export function ExitPlanModePermissionRequest({
     const keepContextModes: Record<string, PermissionMode> = {
       'yes-accept-edits-keep-context': toolPermissionContext.isBypassPermissionsModeAvailable ? 'bypassPermissions' : 'acceptEdits',
       'yes-default-keep-context': 'default',
-      ...(feature('TRANSCRIPT_CLASSIFIER') ? {
+      ...(true ? {
         'yes-resume-auto-mode': 'default' as const
       } : {})
     };
@@ -564,7 +526,7 @@ export function ExitPlanModePermissionRequest({
           interviewPhaseEnabled: isPlanModeInterviewPhaseEnabled(),
           planStructureVariant
         });
-        if (feature('TRANSCRIPT_CLASSIFIER')) {
+        if (true) {
           const autoWasUsedDuringPlan = autoModeStateModule?.isAutoModeActive() ?? false;
           if (autoWasUsedDuringPlan) {
             autoModeStateModule?.setAutoModeActive(false);
@@ -673,14 +635,12 @@ export function ExitPlanModePermissionRequest({
 /** @internal Exported for testing. */
 export function buildPlanApprovalOptions({
   showClearContext,
-  showUltraplan,
   usedPercent,
   isAutoModeAvailable,
   isBypassPermissionsModeAvailable,
   onFeedbackChange
 }: {
   showClearContext: boolean;
-  showUltraplan: boolean;
   usedPercent: number | null;
   isAutoModeAvailable: boolean | undefined;
   isBypassPermissionsModeAvailable: boolean | undefined;
@@ -689,7 +649,7 @@ export function buildPlanApprovalOptions({
   const options: OptionWithDescription<ResponseValue>[] = [];
   const usedLabel = usedPercent !== null ? ` (${usedPercent}% used)` : '';
   if (showClearContext) {
-    if (feature('TRANSCRIPT_CLASSIFIER') && isAutoModeAvailable) {
+    if (true && isAutoModeAvailable) {
       options.push({
         label: `Yes, clear context${usedLabel} and use auto mode`,
         value: 'yes-auto-clear-context'
@@ -708,7 +668,7 @@ export function buildPlanApprovalOptions({
   }
 
   // Slot 2: keep-context with elevated mode (same priority: auto > bypass > edits).
-  if (feature('TRANSCRIPT_CLASSIFIER') && isAutoModeAvailable) {
+  if (true && isAutoModeAvailable) {
     options.push({
       label: 'Yes, and use auto mode',
       value: 'yes-resume-auto-mode'
@@ -728,12 +688,6 @@ export function buildPlanApprovalOptions({
     label: 'Yes, manually approve edits',
     value: 'yes-default-keep-context'
   });
-  if (showUltraplan) {
-    options.push({
-      label: 'No, refine with Ultraplan on OpenClaude on the web',
-      value: 'ultraplan'
-    });
-  }
   options.push({
     type: 'input',
     label: 'No, keep planning',

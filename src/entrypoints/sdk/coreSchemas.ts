@@ -7,6 +7,12 @@
  * @see scripts/generate-sdk-types.ts for type generation
  */
 
+import type {
+  BetaMessage,
+  BetaMessageParam,
+  BetaRawMessageStreamEvent,
+  BetaUsage,
+} from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
 import { z } from 'zod/v4'
 import { lazySchema } from '../../utils/lazySchema.js'
 
@@ -1087,10 +1093,10 @@ export const AccountInfoSchema = lazySchema(() =>
       tokenSource: z.string().optional(),
       apiKeySource: z.string().optional(),
       apiProvider: z
-        .enum(['firstParty', 'bedrock', 'vertex', 'foundry'])
+        .enum(['firstParty', 'openai'])
         .optional()
         .describe(
-          'Active API backend. Anthropic OAuth login only applies when "firstParty"; for 3P providers the other fields are absent and auth is external (AWS creds, gcloud ADC, etc.).',
+          'Active API backend. "firstParty" is the native Anthropic path; "openai" is the OpenAI-compatible shim (the default in this build).',
         ),
     })
     .describe("Information about the logged in user's account."),
@@ -1230,24 +1236,32 @@ export const RewindFilesResultSchema = lazySchema(() =>
 // External Type Placeholders
 // ============================================================================
 //
-// These schemas use z.unknown() as placeholders for external types.
-// The generation script uses TypeOverrideMap to output the correct TS type references.
-// This allows us to define SDK message types in Zod while maintaining proper typing.
+// These schemas pass through external SDK types unchanged. Using z.custom with
+// a concrete type parameter keeps the runtime behaviour identical (anything is
+// accepted) while giving z.infer the real Anthropic SDK types.
 
 /** Placeholder for APIUserMessage from @anthropic-ai/sdk */
-export const APIUserMessagePlaceholder = lazySchema(() => z.unknown())
+export const APIUserMessagePlaceholder = lazySchema(() =>
+  z.custom<BetaMessageParam>(() => true),
+)
 
 /** Placeholder for APIAssistantMessage from @anthropic-ai/sdk */
-export const APIAssistantMessagePlaceholder = lazySchema(() => z.unknown())
+export const APIAssistantMessagePlaceholder = lazySchema(() =>
+  z.custom<BetaMessage>(() => true),
+)
 
 /** Placeholder for RawMessageStreamEvent from @anthropic-ai/sdk */
-export const RawMessageStreamEventPlaceholder = lazySchema(() => z.unknown())
+export const RawMessageStreamEventPlaceholder = lazySchema(() =>
+  z.custom<BetaRawMessageStreamEvent>(() => true),
+)
 
 /** Placeholder for UUID from crypto */
 export const UUIDPlaceholder = lazySchema(() => z.string())
 
 /** Placeholder for NonNullableUsage (mapped type over Usage) */
-export const NonNullableUsagePlaceholder = lazySchema(() => z.unknown())
+export const NonNullableUsagePlaceholder = lazySchema(() =>
+  z.custom<{ [K in keyof BetaUsage]: NonNullable<BetaUsage[K]> }>(() => true),
+)
 
 // ============================================================================
 // SDK Message Types

@@ -15,7 +15,6 @@
  * cap variant, and the combined variant adds the private/team scope split.
  */
 
-import { feature } from 'bun:bundle'
 import {
   MEMORY_FRONTMATTER_EXAMPLE,
   MEMORY_LINK_CONVENTION,
@@ -119,7 +118,7 @@ export function buildExtractCombinedPrompt(
   existingMemories: string,
   skipIndex = false,
 ): string {
-  if (!feature('TEAMMEM')) {
+  if (!true) {
     return buildExtractAutoOnlyPrompt(
       newMessageCount,
       existingMemories,

@@ -1,5 +1,4 @@
 import { c as _c } from "react-compiler-runtime";
-import { feature } from 'bun:bundle';
 import React, { useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import { MailboxProvider } from '../context/mailbox.js';
 import { useEffectEventCompat } from '../hooks/useEffectEventCompat.js';
@@ -14,7 +13,7 @@ import { createStore } from './store.js';
 /* eslint-disable @typescript-eslint/no-require-imports */
 const VoiceProvider: (props: {
   children: React.ReactNode;
-}) => React.ReactNode = feature('VOICE_MODE') ? require('../context/voice.js').VoiceProvider : ({
+}) => React.ReactNode = false ? require('../context/voice.js').VoiceProvider : ({
   children
 }) => children;
 
@@ -140,7 +139,7 @@ function useAppStore(): AppStateStore {
  * const { text, promptId } = useAppState(s => s.promptSuggestion) // good
  * ```
  */
-export function useAppState(selector) {
+export function useAppState<T>(selector: (state: AppState) => T): T {
   const store = useAppStore();
   const selectorRef = React.useRef(selector);
   const storeRef = React.useRef(store);
@@ -152,7 +151,7 @@ export function useAppState(selector) {
   const get = React.useCallback(() => {
     return selectorRef.current(storeRef.current.getState());
   }, []);
-  return useSyncExternalStore(store.subscribe, get, get);
+  return useSyncExternalStore(store.subscribe, get, get) as T;
 }
 
 /**
@@ -176,7 +175,9 @@ const NOOP_SUBSCRIBE = () => () => {};
  * Safe version of useAppState that returns undefined if called outside of AppStateProvider.
  * Useful for components that may be rendered in contexts where AppStateProvider isn't available.
  */
-export function useAppStateMaybeOutsideOfProvider(selector) {
+export function useAppStateMaybeOutsideOfProvider<T>(
+  selector: (state: AppState) => T,
+): T | undefined {
   const store = useContext(AppStoreContext);
   const selectorRef = React.useRef(selector);
   const storeRef = React.useRef(store);
@@ -187,5 +188,8 @@ export function useAppStateMaybeOutsideOfProvider(selector) {
   const get = React.useCallback(() => {
     return storeRef.current ? selectorRef.current(storeRef.current.getState()) : undefined;
   }, []);
-  return useSyncExternalStore(store ? store.subscribe : NOOP_SUBSCRIBE, get);
+  return useSyncExternalStore(
+    store ? store.subscribe : NOOP_SUBSCRIBE,
+    get,
+  ) as T | undefined;
 }

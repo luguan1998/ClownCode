@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type {
   ContentBlockParam,
   ToolResultBlockParam,
@@ -783,7 +782,7 @@ async function checkPermissionsAndCallTool(
     )
   }
 
-  const resultingMessages = []
+  const resultingMessages: MessageUpdateLazy[] = []
 
   // Defense-in-depth: strip _simulatedSedEdit from model-provided Bash input.
   // This field is internal-only — it must only be injected by the permission
@@ -1105,7 +1104,7 @@ async function checkPermissionsAndCallTool(
     // Run PermissionDenied hooks for auto mode classifier denials.
     // If a hook returns {retry: true}, tell the model it may retry.
     if (
-      feature('TRANSCRIPT_CLASSIFIER') &&
+      true &&
       permissionDecision.decisionReason?.type === 'classifier' &&
       permissionDecision.decisionReason.classifier === 'auto-mode'
     ) {
@@ -1429,7 +1428,10 @@ async function checkPermissionsAndCallTool(
 
     // Run PostToolUse hooks
     let toolOutput = result.data
-    const hookResults = []
+    const hookResults: MessageUpdateLazy<
+      AttachmentMessage
+      | ProgressMessage<HookProgress>
+    >[] = []
     const toolContextModifier = result.contextModifier
     const mcpMeta = result.mcpMeta
 

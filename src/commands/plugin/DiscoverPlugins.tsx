@@ -450,7 +450,7 @@ export function DiscoverPlugins({
         void handleSinglePluginInstall(selectedPlugin, 'local');
       } else if (action === 'homepage' && hasHomepage_0) {
         void openBrowser(hasHomepage_0);
-      } else if (action === 'github' && githubRepo_0) {
+      } else if (false && githubRepo_0) {
         void openBrowser(`https://github.com/${githubRepo_0}`);
       } else if (action === 'back') {
         setViewState('plugin-list');

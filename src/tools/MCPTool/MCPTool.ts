@@ -1,6 +1,7 @@
 import { Ajv } from 'ajv'
 import { z } from 'zod/v4'
 import { buildTool, type ToolDef, type ValidationResult } from '../../Tool.js'
+import type { MCPToolResultBlock } from '../../utils/mcpValidation.js'
 import { lazySchema } from '../../utils/lazySchema.js'
 import type { PermissionResult } from '../../types/permissions.js'
 import { isOutputLineTruncated } from '../../utils/terminal.js'
@@ -17,17 +18,13 @@ type InputSchema = ReturnType<typeof inputSchema>
 
 // MCP tools can return either a plain string or an array of content blocks
 // (text, images, etc.). The outputSchema must reflect both shapes so the model
-// knows rich content is possible.
+// knows rich content is possible. Blocks carry per-type payloads zod can't
+// describe, so z.custom passes them through with the SDK's tool_result type.
 export const outputSchema = lazySchema(() =>
   z.union([
     z.string().describe('MCP tool execution result as text'),
     z
-      .array(
-        z.object({
-          type: z.string(),
-          text: z.string().optional(),
-        }),
-      )
+      .array(z.custom<MCPToolResultBlock>(() => true))
       .describe('MCP tool execution result as content blocks'),
   ]),
 )

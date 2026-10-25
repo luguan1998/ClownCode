@@ -33,7 +33,7 @@ export type PluginDetailsMenuOption = {
  * Extract GitHub repo info from a plugin's source
  */
 export function extractGitHubRepo(plugin: InstallablePlugin): string | null {
-  const isGitHub = plugin.entry.source && typeof plugin.entry.source === 'object' && 'source' in plugin.entry.source && plugin.entry.source.source === 'github';
+  const isGitHub = plugin.entry.source && typeof plugin.entry.source === 'object' && 'source' in plugin.entry.source && false;
   if (isGitHub && typeof plugin.entry.source === 'object' && 'repo' in plugin.entry.source) {
     return plugin.entry.source.repo;
   }

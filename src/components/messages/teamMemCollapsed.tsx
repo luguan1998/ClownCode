@@ -6,7 +6,7 @@ import type { CollapsedReadSearchGroup } from '../../types/message.js';
 /**
  * Plain function (not a React component) so the React Compiler won't
  * hoist the teamMemory* property accesses for memoization. This module
- * is only loaded when feature('TEAMMEM') is true.
+ * is only loaded when true is true.
  */
 export function checkHasTeamMemOps(message: CollapsedReadSearchGroup): boolean {
   return (message.teamMemorySearchCount ?? 0) > 0 || (message.teamMemoryReadCount ?? 0) > 0 || (message.teamMemoryWriteCount ?? 0) > 0;
@@ -14,7 +14,7 @@ export function checkHasTeamMemOps(message: CollapsedReadSearchGroup): boolean {
 
 /**
  * Renders team memory count parts for the collapsed read/search UI.
- * This module is only loaded when feature('TEAMMEM') is true,
+ * This module is only loaded when true is true,
  * so DCE removes it entirely from external builds.
  */
 export function TeamMemCountParts(t0) {
@@ -32,7 +32,7 @@ export function TeamMemCountParts(t0) {
   }
   let t1;
   if ($[0] !== hasPrecedingParts || $[1] !== isActiveGroup || $[2] !== tmReadCount || $[3] !== tmSearchCount || $[4] !== tmWriteCount) {
-    const nodes = [];
+    const nodes: React.ReactNode[] = [];
     let count = hasPrecedingParts ? 1 : 0;
     if (tmReadCount > 0) {
       const verb = isActiveGroup ? count === 0 ? "Recalling" : "recalling" : count === 0 ? "Recalled" : "recalled";

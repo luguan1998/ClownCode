@@ -5,6 +5,7 @@ import { Ansi, Box, Text } from '../../ink.js';
 import type { Attachment } from 'src/utils/attachments.js';
 import type { NullRenderingAttachmentType } from './nullRenderingAttachments.js';
 import { useAppState } from '../../state/AppState.js';
+import type { AppState } from '../../state/AppStateStore.js';
 import { getDisplayPath } from 'src/utils/file.js';
 import { formatFileSize } from 'src/utils/format.js';
 import { MessageResponse } from '../MessageResponse.js';
@@ -26,7 +27,6 @@ import { isShutdownApproved } from '../../utils/teammateMailbox.js';
 import { CtrlOToExpand } from '../CtrlOToExpand.js';
 import FullWidthRow from '../design-system/FullWidthRow.js';
 import { FilePathLink } from '../FilePathLink.js';
-import { feature } from 'bun:bundle';
 import { useSelectedMessageBg } from '../messageActions.js';
 type Props = {
   addMargin: boolean;
@@ -42,7 +42,7 @@ export function AttachmentMessage({
 }: Props): React.ReactNode {
   const bg = useSelectedMessageBg();
   // Hoisted to mount-time — per-message component, re-renders on every scroll.
-  const isDemoEnv = feature('EXPERIMENTAL_SKILL_SEARCH') ?
+  const isDemoEnv = false ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useMemo(() => isEnvTruthy(process.env.IS_DEMO), []) : false;
   // Handle teammate_mailbox BEFORE switch
@@ -103,25 +103,8 @@ export function AttachmentMessage({
       </Box>;
   }
 
-  // skill_discovery rendered here (not in the switch) so the 'skill_discovery'
-  // string literal stays inside a feature()-guarded block. A case label can't
-  // be conditionally eliminated; an if-body can.
-  if (feature('EXPERIMENTAL_SKILL_SEARCH')) {
-    if (attachment.type === 'skill_discovery') {
-      if (attachment.skills.length === 0) return null;
-      // Ant users get shortIds inline so they can /skill-feedback while the
-      // turn is still fresh. External users (when this un-gates) just see
-      // names — shortId is undefined outside ant builds anyway.
-      const names = attachment.skills.map(s => s.shortId ? `${s.name} [${s.shortId}]` : s.name).join(', ');
-      const firstId = attachment.skills[0]?.shortId;
-      const hint = "external" === 'ant' && !isDemoEnv && firstId ? ` · /skill-feedback ${firstId} 1=wrong 2=noisy 3=good [comment]` : '';
-      return <Line>
-          <Text bold>{attachment.skills.length}</Text> relevant{' '}
-          {plural(attachment.skills.length, 'skill')}: {names}
-          {hint && <Text dimColor>{hint}</Text>}
-        </Line>;
-    }
-  }
+  // skill_discovery carries no visible output today; it is treated as
+  // null-rendering via the switch default below.
 
   // eslint-disable-next-line @typescript-eslint/switch-exhaustiveness-check -- teammate_mailbox/skill_discovery handled before switch
   switch (attachment.type) {
@@ -436,15 +419,7 @@ function TeammateTaskStatus(t0) {
     attachment
   } = t0;
   const bg = useSelectedMessageBg();
-  let t1;
-  if ($[0] !== attachment.taskId) {
-    t1 = s => s.tasks[attachment.taskId];
-    $[0] = attachment.taskId;
-    $[1] = t1;
-  } else {
-    t1 = $[1];
-  }
-  const task = useAppState(t1);
+  const task = useAppState((s: AppState) => s.tasks[attachment.taskId]);
   if (task?.type !== "in_process_teammate") {
     let t2;
     if ($[2] !== attachment) {

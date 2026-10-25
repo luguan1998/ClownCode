@@ -1,6 +1,7 @@
 import type {
-  ContentBlockParam,
+  DocumentBlockParam,
   ImageBlockParam,
+  SearchResultBlockParam,
   TextBlockParam,
 } from '@anthropic-ai/sdk/resources/index.mjs'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../services/analytics/growthbook.js'
@@ -46,13 +47,24 @@ export function getMaxMcpOutputTokens(): number {
   return DEFAULT_MAX_MCP_OUTPUT_TOKENS
 }
 
-export type MCPToolResult = string | ContentBlockParam[] | undefined
+/**
+ * Blocks an MCP result may carry. MCP content (text, image, audio, resource)
+ * converts to these message blocks only — never tool_use/thinking blocks, so
+ * the loose ContentBlockParam union would over-describe what servers return.
+ */
+export type MCPToolResultBlock =
+  | TextBlockParam
+  | ImageBlockParam
+  | DocumentBlockParam
+  | SearchResultBlockParam
 
-function isTextBlock(block: ContentBlockParam): block is TextBlockParam {
+export type MCPToolResult = string | MCPToolResultBlock[] | undefined
+
+function isTextBlock(block: MCPToolResultBlock): block is TextBlockParam {
   return block.type === 'text'
 }
 
-function isImageBlock(block: ContentBlockParam): block is ImageBlockParam {
+function isImageBlock(block: MCPToolResultBlock): block is ImageBlockParam {
   return block.type === 'image'
 }
 
@@ -92,10 +104,10 @@ function truncateString(content: string, maxChars: number): string {
 }
 
 async function truncateContentBlocks(
-  blocks: ContentBlockParam[],
+  blocks: MCPToolResultBlock[],
   maxChars: number,
-): Promise<ContentBlockParam[]> {
-  const result: ContentBlockParam[] = []
+): Promise<MCPToolResultBlock[]> {
+  const result: MCPToolResultBlock[] = []
   let currentChars = 0
 
   for (const block of blocks) {
@@ -188,10 +200,7 @@ export async function truncateMcpContent(
   if (typeof content === 'string') {
     return truncateString(content, maxChars) + truncationMsg
   } else {
-    const truncatedBlocks = await truncateContentBlocks(
-      content as ContentBlockParam[],
-      maxChars,
-    )
+    const truncatedBlocks = await truncateContentBlocks(content, maxChars)
     truncatedBlocks.push({ type: 'text', text: truncationMsg })
     return truncatedBlocks
   }

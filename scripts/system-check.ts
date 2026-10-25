@@ -341,6 +341,38 @@ function writeJsonReport(
   }
 }
 
+/**
+ * Probe the configured LLM endpoint (OPENAI_BASE_URL family). The CLI
+ * errors out at startup when no base URL is configured, so this only runs
+ * when one exists; a failed probe is a warning, not a hard failure.
+ */
+async function checkBaseUrlReachability(): Promise<CheckResult> {
+  const baseUrl =
+    process.env.OPENAI_BASE_URL ?? process.env.OPENAI_API_BASE ?? process.env.ANTHROPIC_BASE_URL
+  if (!baseUrl) {
+    return { ok: true, label: 'Base URL', detail: 'not configured (CLI requires it at startup)' }
+  }
+  try {
+    const url = new URL(baseUrl)
+    const probeUrl = `${url.protocol}//${url.host}/`
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 5000)
+    const res = await fetch(probeUrl, { signal: controller.signal })
+    clearTimeout(timer)
+    return {
+      ok: true,
+      label: 'Base URL reachability',
+      detail: `${url.host} responded (HTTP ${res.status})`,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      label: 'Base URL reachability',
+      detail: `${baseUrl} not reachable: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2))
   const results: CheckResult[] = []
@@ -349,15 +381,26 @@ async function main(): Promise<void> {
   enableConfigs()
   const { applySafeConfigEnvironmentVariables } = await import('../src/utils/managedEnv.js')
   applySafeConfigEnvironmentVariables()
-  const { hydrateGithubModelsTokenFromSecureStorage } = await import('../src/utils/githubModelsCredentials.js')
-  hydrateGithubModelsTokenFromSecureStorage()
 
   results.push(checkNodeVersion())
   results.push(checkBunRuntime())
   results.push(checkBuildArtifacts())
   results.push(...checkOpenAIEnv())
   results.push(await checkBaseUrlReachability())
-  results.push(await checkProviderGenerationReadiness())
+  // Verify the provider layer can produce a generation request from settings.
+  {
+    let ok = true
+    let detail = 'provider layer ready'
+    try {
+      const { getConfiguredBaseUrl, getConfiguredModel } = await import('../src/services/api/providerConfig.js')
+      getConfiguredBaseUrl()
+      getConfiguredModel()
+    } catch (err) {
+      ok = false
+      detail = `provider config failed: ${err instanceof Error ? err.message : String(err)}`
+    }
+    results.push({ ok, label: 'Provider generation readiness', detail })
+  }
   results.push(checkOllamaProcessorMode())
 
   if (!options.json) {

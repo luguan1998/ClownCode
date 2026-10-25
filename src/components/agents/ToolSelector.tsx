@@ -19,7 +19,6 @@ import { ReadMcpResourceTool } from 'src/tools/ReadMcpResourceTool/ReadMcpResour
 import { TaskOutputTool } from 'src/tools/TaskOutputTool/TaskOutputTool.js';
 import { TaskStopTool } from 'src/tools/TaskStopTool/TaskStopTool.js';
 import { TodoWriteTool } from 'src/tools/TodoWriteTool/TodoWriteTool.js';
-import { TungstenTool } from 'src/tools/TungstenTool/TungstenTool.js';
 import { WebFetchTool } from 'src/tools/WebFetchTool/WebFetchTool.js';
 import { WebSearchTool } from 'src/tools/WebSearchTool/WebSearchTool.js';
 import type { KeyboardEvent } from '../../ink/events/keyboard-event.js';
@@ -58,7 +57,7 @@ function getToolBuckets(): ToolBuckets {
     },
     EXECUTION: {
       name: 'Execution tools',
-      toolNames: new Set([BashTool.name, "external" === 'ant' ? TungstenTool.name : undefined].filter(n => n !== undefined))
+      toolNames: new Set([BashTool.name])
     },
     MCP: {
       name: 'MCP tools',
@@ -250,8 +249,8 @@ export function ToolSelector(t0) {
   const toolsByBucket = buckets;
   let t9;
   if ($[22] !== selectedSet) {
-    t9 = bucketTools => {
-      const selected = count(bucketTools, t_5 => selectedSet.has(t_5.name));
+    t9 = (bucketTools: Tool[]) => {
+      const selected = count(bucketTools, (t_5: Tool) => selectedSet.has(t_5.name));
       const needsSelection = selected < bucketTools.length;
       return () => {
         const toolNames_1 = bucketTools.map(_temp4);
@@ -312,7 +311,7 @@ export function ToolSelector(t0) {
       name: toolBuckets_0.OTHER.name,
       tools: toolsByBucket.other
     }];
-    bucketConfigs.forEach(t11 => {
+    bucketConfigs.forEach((t11: { id: string; name: string; tools: Tool[] }) => {
       const {
         id,
         name: name_1,

@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type Anthropic from '@anthropic-ai/sdk'
 import {
   APIConnectionError,
@@ -74,11 +73,7 @@ const FOREGROUND_529_RETRY_SOURCES = new Set<QuerySource>([
   'verification_agent',
   'side_question',
   // Security classifiers — must complete for auto-mode correctness.
-  // yoloClassifier.ts uses 'auto_mode' (not 'yolo_classifier' — that's
-  // type-only). bash_classifier is internal-only; feature-gate so the string
-  // tree-shakes out of external builds (excluded-strings.txt).
   'auto_mode',
-  ...(feature('BASH_CLASSIFIER') ? (['bash_classifier'] as const) : []),
 ])
 
 function shouldRetry529(querySource: QuerySource | undefined): boolean {
@@ -98,7 +93,7 @@ const PERSISTENT_RESET_CAP_MS = 6 * 60 * 60 * 1000
 const HEARTBEAT_INTERVAL_MS = 30_000
 
 function isPersistentRetryEnabled(): boolean {
-  return feature('UNATTENDED_RETRY')
+  return false
     ? isEnvTruthy(process.env.CLAUDE_CODE_UNATTENDED_RETRY)
     : false
 }
@@ -359,7 +354,7 @@ export async function* withRetry<T>(
                 options.model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
               fallback_model:
                 options.fallbackModel as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-              provider: getAPIProviderForStatsig(),
+              provider: getAPIProviderForStatsig() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
             })
 
             // Throw special error to indicate fallback was triggered
@@ -490,7 +485,7 @@ export async function* withRetry<T>(
         error: (error as APIError)
           .message as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         status: (error as APIError).status,
-        provider: getAPIProviderForStatsig(),
+        provider: getAPIProviderForStatsig() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
       })
 
       if (persistent) {
@@ -499,7 +494,7 @@ export async function* withRetry<T>(
             status: (error as APIError).status,
             delayMs,
             attempt: reportedAttempt,
-            provider: getAPIProviderForStatsig(),
+            provider: getAPIProviderForStatsig() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
           })
         }
         // Chunk long sleeps so the host sees periodic stdout activity and
@@ -863,7 +858,7 @@ export function getRateLimitResetDelayMs(error: APIError): number | null {
     return Math.min(delayMs, PERSISTENT_RESET_CAP_MS)
   }
 
-  if (provider === 'openai' || provider === 'codex' || provider === 'github') {
+  if (provider === 'openai' || provider === 'codex' || false) {
     const reqHeader = error.headers?.get?.('x-ratelimit-reset-requests')
     const tokHeader = error.headers?.get?.('x-ratelimit-reset-tokens')
     const reqMs = reqHeader ? parseOpenAIDuration(reqHeader) : null

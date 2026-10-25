@@ -4,7 +4,10 @@ import {
   getSessionId,
   isSessionPersistenceDisabled,
 } from 'src/bootstrap/state.js'
-import type { SDKMessage } from 'src/entrypoints/agentSdkTypes.js'
+import type {
+  SDKAssistantMessageError,
+  SDKMessage,
+} from 'src/entrypoints/agentSdkTypes.js'
 import type { CanUseToolFn } from '../hooks/useCanUseTool.js'
 import { runTools } from '../services/tools/toolOrchestration.js'
 import { findToolByName, type Tool, type Tools } from '../Tool.js'
@@ -113,7 +116,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
           parent_tool_use_id: null,
           session_id: getSessionId(),
           uuid: _.uuid,
-          error: _.error,
+          error: _.error as SDKAssistantMessageError | undefined,
         }
       }
       return
@@ -122,7 +125,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
         message.data.type === 'agent_progress' ||
         message.data.type === 'skill_progress'
       ) {
-        for (const _ of normalizeMessages([message.data.message])) {
+        for (const _ of [message.data.message]) {
           switch (_.type) {
             case 'assistant':
               // Skip empty messages (e.g., "(no content)") that shouldn't be output to SDK
@@ -135,7 +138,7 @@ export function* normalizeMessage(message: Message): Generator<SDKMessage> {
                 parent_tool_use_id: message.parentToolUseID,
                 session_id: getSessionId(),
                 uuid: _.uuid,
-                error: _.error,
+                error: _.error as SDKAssistantMessageError | undefined,
               }
               break
             case 'user':

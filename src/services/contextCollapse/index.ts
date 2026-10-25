@@ -5,3 +5,4 @@ export function isContextCollapseEnabled(): boolean {
 export function getContextCollapseState() {
   return null
 }
+export function resetContextCollapse(): void {}

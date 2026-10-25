@@ -1,4 +1,5 @@
-import { isRemoteManagedSettingsEligible } from '../services/remoteManagedSettings/syncCache.js'
+// Remote-managed settings sync is a cloud feature; never eligible here.
+const isRemoteManagedSettingsEligible = (): boolean => false
 import { clearCACertsCache } from './caCerts.js'
 import { getGlobalConfig } from './config.js'
 import { isEnvTruthy } from './envUtils.js'

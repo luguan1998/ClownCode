@@ -2112,13 +2112,11 @@ export class ClaudeAuthProvider implements OAuthClientProvider {
         `Returning cached discovery state (authServer: ${cached.authorizationServerUrl})`,
       )
 
+      // saveDiscoveryState persists URLs only (keychain size limit), so the
+      // metadata blobs are always absent here; the SDK re-discovers them.
       return {
         authorizationServerUrl: cached.authorizationServerUrl,
         resourceMetadataUrl: cached.resourceMetadataUrl,
-        resourceMetadata:
-          cached.resourceMetadata as OAuthDiscoveryState['resourceMetadata'],
-        authorizationServerMetadata:
-          cached.authorizationServerMetadata as OAuthDiscoveryState['authorizationServerMetadata'],
       }
     }
 

@@ -1,3 +1,4 @@
+import type { SearchResultWeb } from '@mendable/firecrawl-js'
 import type { SearchInput, SearchProvider } from './types.js'
 import { applyDomainFilters, type ProviderOutput } from './types.js'
 
@@ -24,11 +25,13 @@ export const firecrawlProvider: SearchProvider = {
     const data = await app.search(query, { limit: 15 })
 
     const hits = applyDomainFilters(
-      (data.web ?? []).map((r: { url: string; title?: string; description?: string }) => ({
-        title: r.title ?? r.url,
-        url: r.url,
-        description: r.description,
-      })),
+      (data.web ?? [])
+        .filter((r): r is SearchResultWeb => 'url' in r)
+        .map(r => ({
+          title: r.title ?? r.url,
+          url: r.url,
+          description: r.description,
+        })),
       input,
     )
 

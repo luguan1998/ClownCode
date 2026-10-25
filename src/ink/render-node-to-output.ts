@@ -1,6 +1,6 @@
 import indentString from 'indent-string'
 import { applyTextStyles } from './colorize.js'
-import type { DOMElement, DOMNode } from './dom.js'
+import type { DOMElement, DOMNode, NodeNames } from './dom.js'
 import getMaxWidth from './get-max-width.js'
 import type { Rectangle } from './layout/geometry.js'
 import { LayoutDisplay, LayoutEdge, type LayoutNode } from './layout/node.js'
@@ -389,7 +389,9 @@ function isElementNode(node: DOMNode | undefined): node is DOMElement {
 
 function isRenderableElementNode(node: unknown): node is DOMElement {
   if (!node || typeof node !== 'object') return false
-  const candidate = node as Partial<DOMElement> & { nodeName?: string }
+  const candidate = node as Partial<Omit<DOMElement, 'nodeName'>> & {
+    nodeName?: NodeNames
+  }
   return (
     candidate.nodeName !== undefined &&
     candidate.nodeName !== '#text' &&

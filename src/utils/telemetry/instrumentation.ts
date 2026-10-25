@@ -39,12 +39,7 @@ import {
   setMeterProvider,
   setTracerProvider,
 } from 'src/bootstrap/state.js'
-import {
-  getOtelHeadersFromHelper,
-  getSubscriptionType,
-  is1PApiCustomer,
-  isClaudeAISubscriber,
-} from 'src/utils/auth.js'
+import { getOtelHeadersFromHelper } from 'src/utils/auth.js'
 import { getPlatform, getWslVersion } from 'src/utils/platform.js'
 
 import { getCACertificates } from '../caCerts.js'
@@ -58,7 +53,6 @@ import { getSettings_DEPRECATED } from '../settings/settings.js'
 import { jsonStringify } from '../slowOperations.js'
 import { profileCheckpoint } from '../startupProfiler.js'
 import { isBetaTracingEnabled } from './betaSessionTracing.js'
-import { BigQueryMetricsExporter } from './bigqueryExporter.js'
 import { ClaudeCodeDiagLogger } from './logger.js'
 import { initializePerfettoTracing } from './perfettoTracing.js'
 import {
@@ -134,7 +128,7 @@ async function getOtlpReaders() {
       DEFAULT_METRICS_EXPORT_INTERVAL_MS.toString(),
   )
 
-  const exporters = []
+  const exporters: any[] = []
   for (const exporterType of exporterTypes) {
     if (exporterType === 'console') {
       // Custom console exporter that shows resource attributes
@@ -226,7 +220,7 @@ async function getOtlpLogExporters() {
     `[3P telemetry] getOtlpLogExporters: types=${jsonStringify(exporterTypes)}, protocol=${protocol}, endpoint=${endpoint}`,
   )
 
-  const exporters = []
+  const exporters: any[] = []
   for (const exporterType of exporterTypes) {
     if (exporterType === 'console') {
       exporters.push(new ConsoleLogRecordExporter())
@@ -273,7 +267,7 @@ async function getOtlpLogExporters() {
 async function getOtlpTraceExporters() {
   const exporterTypes = parseExporterTypes(process.env.OTEL_TRACES_EXPORTER)
 
-  const exporters = []
+  const exporters: any[] = []
   for (const exporterType of exporterTypes) {
     if (exporterType === 'console') {
       exporters.push(new ConsoleSpanExporter())
@@ -323,27 +317,6 @@ async function getOtlpTraceExporters() {
 
 export function isTelemetryEnabled() {
   return isEnvTruthy(process.env.CLAUDE_CODE_ENABLE_TELEMETRY)
-}
-
-function getBigQueryExportingReader() {
-  const bigqueryExporter = new BigQueryMetricsExporter()
-  return new PeriodicExportingMetricReader({
-    exporter: bigqueryExporter,
-    exportIntervalMillis: 5 * 60 * 1000, // 5mins for BigQuery metrics exporter to reduce load
-  })
-}
-
-function isBigQueryMetricsEnabled() {
-  // BigQuery metrics are enabled for:
-  // 1. API customers (excluding Claude.ai subscribers and Bedrock/Vertex)
-  // 2. Claude for Enterprise (C4E) users
-  // 3. Claude for Teams users
-  const subscriptionType = getSubscriptionType()
-  const isC4EOrTeamUser =
-    isClaudeAISubscriber() &&
-    (subscriptionType === 'enterprise' || subscriptionType === 'team')
-
-  return is1PApiCustomer() || isC4EOrTeamUser
 }
 
 /**
@@ -452,7 +425,7 @@ export async function initializeTelemetry() {
   // Enable via CLAUDE_CODE_PERFETTO_TRACE=1 or CLAUDE_CODE_PERFETTO_TRACE=<path>
   initializePerfettoTracing()
 
-  const readers = []
+  const readers: any[] = []
 
   // Add customer exporters (if enabled)
   const telemetryEnabled = isTelemetryEnabled()
@@ -461,11 +434,6 @@ export async function initializeTelemetry() {
   )
   if (telemetryEnabled) {
     readers.push(...(await getOtlpReaders()))
-  }
-
-  // Add BigQuery exporter (for API customers, C4E users, and internal users)
-  if (isBigQueryMetricsEnabled()) {
-    readers.push(getBigQueryExportingReader())
   }
 
   // Create base resource with service attributes

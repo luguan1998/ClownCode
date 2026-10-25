@@ -8,6 +8,7 @@ import { c as _c } from "react-compiler-runtime";
 import { cwd } from 'process';
 import React from 'react';
 import { useManagePlugins } from '../../hooks/useManagePlugins.js';
+import { logEvent } from '../../services/analytics/index.js';
 import type { Root } from '../../ink.js';
 import { Box, Text } from '../../ink.js';
 import { KeybindingSetup } from '../../keybindings/KeybindingProviderSetup.js';

@@ -613,7 +613,8 @@ export function createCliExecutor(opts: {
     async getFrontmostApp(): Promise<FrontmostApp | null> {
       const info = requireComputerUseInput().getFrontmostAppInfo()
       if (!info || !info.bundleId) return null
-      return { bundleId: info.bundleId, displayName: info.appName }
+      // The native layer reports bundleId but can omit the friendly name.
+      return { bundleId: info.bundleId, displayName: info.appName ?? info.bundleId }
     },
 
     async appUnderPoint(

@@ -6,7 +6,6 @@ import { getDynamicConfig_CACHED_MAY_BE_STALE } from '../../services/analytics/g
 import { logEvent } from '../../services/analytics/index.js';
 import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
 import { Select } from '../CustomSelect/select.js';
-import { DesktopHandoff } from '../DesktopHandoff.js';
 import { PermissionDialog } from '../permissions/PermissionDialog.js';
 type DesktopUpsellConfig = {
   enable_shortcut_tip: boolean;
@@ -39,7 +38,6 @@ export function DesktopUpsellStartup(t0) {
   const {
     onDone
   } = t0;
-  const [showHandoff, setShowHandoff] = useState(false);
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = [];
@@ -48,24 +46,13 @@ export function DesktopUpsellStartup(t0) {
     t1 = $[0];
   }
   useEffect(_temp, t1);
-  if (showHandoff) {
-    let t2;
-    if ($[1] !== onDone) {
-      t2 = <DesktopHandoff onDone={() => onDone()} />;
-      $[1] = onDone;
-      $[2] = t2;
-    } else {
-      t2 = $[2];
-    }
-    return t2;
-  }
   let t2;
   if ($[3] !== onDone) {
     t2 = function handleSelect(value) {
       switch (value) {
         case "try":
           {
-            setShowHandoff(true);
+            onDone();
             return;
           }
         case "never":

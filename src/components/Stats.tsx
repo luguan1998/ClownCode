@@ -1,5 +1,4 @@
 import { c as _c } from "react-compiler-runtime";
-import { feature } from 'bun:bundle';
 import { plot as asciichart } from 'asciichart';
 import chalk from 'chalk';
 import figures from 'figures';
@@ -118,14 +117,14 @@ type StatsContentProps = {
  * Inner component that uses React 19's use() to read the stats promise.
  * Suspends while loading all-time stats, then handles date range changes without suspending.
  */
-function StatsContent(t0) {
+function StatsContent(t0: StatsContentProps) {
   const $ = _c(34);
   const {
     allTimePromise,
     onClose
   } = t0;
   const allTimeResult = use(allTimePromise);
-  const [dateRange, setDateRange] = useState("all");
+  const [dateRange, setDateRange] = useState<StatsDateRange>("all");
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
     t1 = {};
@@ -135,8 +134,8 @@ function StatsContent(t0) {
   }
   const [statsCache, setStatsCache] = useState(t1);
   const [isLoadingFiltered, setIsLoadingFiltered] = useState(false);
-  const [activeTab, setActiveTab] = useState("Overview");
-  const [copyStatus, setCopyStatus] = useState(null);
+  const [activeTab, setActiveTab] = useState<'Overview' | 'Models'>("Overview");
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
   let t2;
   let t3;
   if ($[1] !== dateRange || $[2] !== statsCache) {
@@ -388,7 +387,7 @@ function OverviewTab({
       pct: number;
     }[];
   } | null = null;
-  if (feature('SHOT_STATS') && stats.shotDistribution) {
+  if (true && stats.shotDistribution) {
     const dist = stats.shotDistribution;
     const total = Object.values(dist).reduce((s, n) => s + n, 0);
     if (total > 0) {
@@ -512,7 +511,7 @@ function OverviewTab({
       </Box>
 
       {/* Speculation time saved (internal-only) */}
-      {"external" === 'ant' && stats.totalSpeculationTimeSavedMs > 0 && <Box flexDirection="row" gap={4}>
+      {false && stats.totalSpeculationTimeSavedMs > 0 && <Box flexDirection="row" gap={4}>
             <Box flexDirection="column" width={28}>
               <Text wrap="truncate">
                 Speculation saved:{' '}
@@ -1151,13 +1150,13 @@ function renderOverviewToAnsi(stats: ClaudeCodeStats): string[] {
   lines.push(row('Active days', activeDaysVal, 'Peak hour', peakHourVal));
 
   // Speculation time saved (internal-only)
-  if ("external" === 'ant' && stats.totalSpeculationTimeSavedMs > 0) {
+  if (false && stats.totalSpeculationTimeSavedMs > 0) {
     const label = 'Speculation saved:'.padEnd(COL1_LABEL_WIDTH);
     lines.push(label + h(formatDuration(stats.totalSpeculationTimeSavedMs)));
   }
 
   // Shot stats (internal-only)
-  if (feature('SHOT_STATS') && stats.shotDistribution) {
+  if (true && stats.shotDistribution) {
     const dist = stats.shotDistribution;
     const totalWithShots = Object.values(dist).reduce((s, n) => s + n, 0);
     if (totalWithShots > 0) {

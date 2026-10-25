@@ -3,34 +3,46 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type { UUID } from 'node:crypto'
+
+import { EMPTY_USAGE } from '../services/api/emptyUsage.ts'
 import {
   buildConversationChain,
   loadTranscriptFile,
   stripPersistedToolUseResultsFromJSONLBuffer,
 } from './sessionStorage.ts'
+import type {
+  AssistantMessage,
+  SystemCompactBoundaryMessage,
+  UserMessage,
+} from '../types/message.ts'
 
 const tempDirs: string[] = []
 const sessionId = '00000000-0000-4000-8000-000000000999'
 const ts = '2026-04-02T00:00:00.000Z'
 
-function id(n: number): string {
-  return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+function id(n: number): UUID {
+  return `00000000-0000-4000-8000-${String(n).padStart(12, '0')}` as UUID
 }
 
-function base(uuid: string, parentUuid: string | null) {
+function base(uuid: UUID, parentUuid: UUID | null) {
   return {
     uuid,
     parentUuid,
     timestamp: ts,
     cwd: '/tmp',
-    userType: 'external',
+    userType: 'external' as const,
     sessionId,
     version: 'test',
     isSidechain: false,
   }
 }
 
-function user(uuid: string, parentUuid: string | null, content: string) {
+function user(
+  uuid: UUID,
+  parentUuid: UUID | null,
+  content: string,
+): UserMessage {
   return {
     ...base(uuid, parentUuid),
     type: 'user',
@@ -42,7 +54,11 @@ function user(uuid: string, parentUuid: string | null, content: string) {
   }
 }
 
-function assistant(uuid: string, parentUuid: string | null, text: string) {
+function assistant(
+  uuid: UUID,
+  parentUuid: UUID | null,
+  text: string,
+): AssistantMessage {
   return {
     ...base(uuid, parentUuid),
     type: 'assistant',
@@ -50,28 +66,30 @@ function assistant(uuid: string, parentUuid: string | null, text: string) {
       id: uuid,
       type: 'message',
       role: 'assistant',
-      content: [{ type: 'text', text }],
+      content: [{ type: 'text' as const, text, citations: [] }],
       model: 'test-model',
       stop_reason: 'end_turn',
+      stop_sequence: '',
+      container: null,
+      context_management: null,
       usage: {
+        ...EMPTY_USAGE,
         input_tokens: 1,
         output_tokens: 1,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
       },
     },
   }
 }
 
 function compactBoundary(
-  uuid: string,
-  parentUuid: string | null,
+  uuid: UUID,
+  parentUuid: UUID | null,
   preservedSegment: {
-    headUuid: string
-    anchorUuid: string
-    tailUuid: string
+    headUuid: UUID
+    anchorUuid: UUID
+    tailUuid: UUID
   },
-) {
+): SystemCompactBoundaryMessage {
   return {
     ...base(uuid, parentUuid),
     type: 'system',

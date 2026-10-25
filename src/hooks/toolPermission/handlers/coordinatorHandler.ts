@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type { PendingClassifierCheck } from '../../../types/permissions.js'
 import { logError } from '../../../utils/log.js'
 import type { PermissionDecision } from '../../../utils/permissions/PermissionResult.js'
@@ -37,13 +36,8 @@ async function handleCoordinatorPermission(
     )
     if (hookResult) return hookResult
 
-    // 2. Try classifier (slow, inference -- bash only)
-    const classifierResult = feature('BASH_CLASSIFIER')
-      ? await ctx.tryClassifier?.(params.pendingClassifierCheck, updatedInput)
-      : null
-    if (classifierResult) {
-      return classifierResult
-    }
+    // 2. Classifier auto-approval is not part of this build (BASH_CLASSIFIER
+    // is disabled), so the hook result falls straight through to the dialog.
   } catch (error) {
     // If automated checks fail unexpectedly, fall through to show the dialog
     // so the user can decide manually. Non-Error throws get a context prefix

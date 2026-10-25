@@ -86,24 +86,14 @@ import { getProjectRoot } from '../bootstrap/state.js'
 import { formatCommandsWithinBudget } from '../tools/SkillTool/prompt.js'
 import { getContextWindowForModel } from './context.js'
 import type { DiscoverySignal } from '../services/skillSearch/signals.js'
+/* eslint-disable @typescript-eslint/no-require-imports */
+const autoModeStateModule = require('../utils/permissions/autoModeState.js') as typeof import('../utils/permissions/autoModeState.js')
+/* eslint-enable @typescript-eslint/no-require-imports */
 // Conditional require for DCE. All skill-search string literals that would
 // otherwise leak into external builds live inside these modules. The only
 // surfaces in THIS file are: the maybe() call (gated via spread below) and
 // the skill_listing suppression check (uses the same skillSearchModules null
 // check). The type-only DiscoverySignal import above is erased at compile time.
-/* eslint-disable @typescript-eslint/no-require-imports */
-const skillSearchModules = feature('EXPERIMENTAL_SKILL_SEARCH')
-  ? {
-      featureCheck:
-        require('../services/skillSearch/featureCheck.js') as typeof import('../services/skillSearch/featureCheck.js'),
-      prefetch:
-        require('../services/skillSearch/prefetch.js') as typeof import('../services/skillSearch/prefetch.js'),
-    }
-  : null
-const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
-  ? (require('./permissions/autoModeState.js') as typeof import('./permissions/autoModeState.js'))
-  : null
-/* eslint-enable @typescript-eslint/no-require-imports */
 import {
   MAX_LINES_TO_READ,
   FILE_READ_TOOL_NAME,
@@ -195,17 +185,9 @@ import {
 } from './messages.js'
 import { isHumanTurn } from './messagePredicates.js'
 import { isEnvTruthy, getClaudeConfigHomeDir } from './envUtils.js'
-import { feature } from 'bun:bundle'
 /* eslint-disable @typescript-eslint/no-require-imports */
-const BRIEF_TOOL_NAME: string | null =
-  feature('KAIROS') || feature('KAIROS_BRIEF')
-    ? (
-        require('../tools/BriefTool/prompt.js') as typeof import('../tools/BriefTool/prompt.js')
-      ).BRIEF_TOOL_NAME
-    : null
-const sessionTranscriptModule = feature('KAIROS')
-  ? (require('../services/sessionTranscript/sessionTranscript.js') as typeof import('../services/sessionTranscript/sessionTranscript.js'))
-  : null
+const BRIEF_TOOL_NAME: string | null = null
+const sessionTranscriptModule = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { hasUltrathinkKeyword, isUltrathinkEnabled } from './thinking.js'
 import {
@@ -808,19 +790,6 @@ export async function getAttachments(
         // but that content is NOT user intent and must not trigger discovery.
         // Without this gate, a 110KB SKILL.md fires ~3.3s of chunked AKI
         // queries on every skill invocation (session 13a9afae).
-        ...(feature('EXPERIMENTAL_SKILL_SEARCH') &&
-        skillSearchModules &&
-        !options?.skipSkillDiscovery
-          ? [
-              maybe('skill_discovery', () =>
-                skillSearchModules.prefetch.getTurnZeroSkillDiscovery(
-                  input,
-                  messages ?? [],
-                  context,
-                ),
-              ),
-            ]
-          : []),
       ]
     : []
 
@@ -890,7 +859,7 @@ export async function getAttachments(
     // replaces it; see src/services/skillSearch/prefetch.ts.
     maybe('plan_mode', () => getPlanModeAttachments(messages, toolUseContext)),
     maybe('plan_mode_exit', () => getPlanModeExitAttachment(toolUseContext)),
-    ...(feature('TRANSCRIPT_CLASSIFIER')
+    ...(true
       ? [
           maybe('auto_mode', () =>
             getAutoModeAttachments(messages, toolUseContext),
@@ -929,7 +898,7 @@ export async function getAttachments(
     maybe('critical_system_reminder', () =>
       Promise.resolve(getCriticalSystemReminderAttachment(toolUseContext)),
     ),
-    ...(feature('COMPACTION_REMINDERS')
+    ...(false
       ? [
           maybe('compaction_reminder', () =>
             Promise.resolve(
@@ -941,7 +910,7 @@ export async function getAttachments(
           ),
         ]
       : []),
-    ...(feature('HISTORY_SNIP')
+    ...(false
       ? [
           maybe('context_efficiency', () =>
             Promise.resolve(getContextEfficiencyAttachment(messages ?? [])),
@@ -1009,7 +978,7 @@ export async function getAttachments(
     ...userAttachmentResults.flat(),
     ...threadAttachmentResults.flat(),
     ...mainThreadAttachmentResults.flat(),
-  ].filter(a => a !== undefined && a !== null)
+  ].filter((a): a is Attachment => a !== undefined && a !== null)
 }
 
 async function maybe<A>(label: string, f: () => Promise<A[]>): Promise<A[]> {
@@ -1444,11 +1413,6 @@ export function getDateChangeAttachments(
   // the /dream skill (1–5am local) finds it even if no compaction fires
   // today. Fire-and-forget; writeSessionTranscriptSegment buckets by
   // message timestamp so a multi-day gap flushes each day correctly.
-  if (feature('KAIROS')) {
-    if (getKairosActive() && messages !== undefined) {
-      sessionTranscriptModule?.flushOnDateChange(messages, currentDate)
-    }
-  }
 
   return [{ type: 'date_change', newDate: currentDate }]
 }
@@ -2767,12 +2731,6 @@ async function getSkillListingAttachments(
   // MCP are small and intent-signaled; user/project/plugin skills go through
   // discovery. feature() first for DCE — the property-access string leaks
   // otherwise even with ?. on null.
-  if (
-    feature('EXPERIMENTAL_SKILL_SEARCH') &&
-    skillSearchModules?.featureCheck.isSkillSearchEnabled()
-  ) {
-    allCommands = filterToBundledAndMcp(allCommands)
-  }
 
   const agentKey = toolUseContext.agentId ?? ''
   let sent = sentSkillNames.get(agentKey)
@@ -3923,7 +3881,7 @@ function getTokenUsageAttachment(
 }
 
 function getOutputTokenUsageAttachment(): Attachment[] {
-  if (feature('TOKEN_BUDGET')) {
+  if (true) {
     const budget = getCurrentTurnTokenBudget()
     if (budget === null || budget <= 0) {
       return []
@@ -4060,23 +4018,7 @@ export function getCompactionReminderAttachment(
 export function getContextEfficiencyAttachment(
   messages: Message[],
 ): Attachment[] {
-  if (!feature('HISTORY_SNIP')) {
-    return []
-  }
-  // Gate must match SnipTool.isEnabled() — don't nudge toward a tool that
-  // isn't in the tool list. Lazy require keeps this file snip-string-free.
-  const { isSnipRuntimeEnabled, shouldNudgeForSnips } =
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('../services/compact/snipCompact.js') as typeof import('../services/compact/snipCompact.js')
-  if (!isSnipRuntimeEnabled()) {
-    return []
-  }
-
-  if (!shouldNudgeForSnips(messages)) {
-    return []
-  }
-
-  return [{ type: 'context_efficiency' }]
+  return []
 }
 
 

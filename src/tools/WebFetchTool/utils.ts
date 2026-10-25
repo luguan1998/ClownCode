@@ -305,12 +305,16 @@ export async function getWithPermittedRedirects(
           }
         }
         const arrayBuffer = await fetchResponse.arrayBuffer()
+        const responseHeaders: Record<string, string> = {}
+        fetchResponse.headers.forEach((value, key) => {
+          responseHeaders[key] = value
+        })
         // Build an AxiosResponse-like shape so downstream code stays happy
         return {
           data: new Uint8Array(arrayBuffer),
           status: fetchResponse.status,
           statusText: fetchResponse.statusText,
-          headers: Object.fromEntries(fetchResponse.headers.entries()),
+          headers: responseHeaders,
           config: axiosConfig,
           request: undefined,
         } as unknown as AxiosResponse<ArrayBuffer>

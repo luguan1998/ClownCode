@@ -569,10 +569,12 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe('Custom status line display configuration'),
       // Enabled plugins using marketplace-first format
+      // Explicit `undefined` values are the deletion marker for mergeWith
+      // (see updateSettingsForSource), so the value schema is optional.
       enabledPlugins: z
         .record(
           z.string(),
-          z.union([z.array(z.string()), z.boolean()]),
+          z.union([z.array(z.string()), z.boolean()]).optional(),
         )
         .optional()
         .describe(

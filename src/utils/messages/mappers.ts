@@ -7,6 +7,7 @@ import {
 } from 'src/constants/xml.js'
 import type {
   SDKAssistantMessage,
+  SDKAssistantMessageError,
   SDKCompactBoundaryMessage,
   SDKMessage,
   SDKRateLimitInfo,
@@ -26,7 +27,7 @@ import { getPlan } from '../plans.js'
 export function toInternalMessages(
   messages: readonly DeepImmutable<SDKMessage>[],
 ): Message[] {
-  return messages.flatMap(message => {
+  return messages.flatMap((message): Message[] => {
     switch (message.type) {
       case 'assistant':
         return [
@@ -61,7 +62,7 @@ export function toInternalMessages(
               compactMetadata: fromSDKCompactMetadata(
                 compactMsg.compact_metadata,
               ),
-              uuid: message.uuid,
+              uuid: message.uuid as UUID,
               timestamp: new Date().toISOString(),
             },
           ]
@@ -104,9 +105,9 @@ export function fromSDKCompactMetadata(
     preTokens: meta.pre_tokens,
     ...(seg && {
       preservedSegment: {
-        headUuid: seg.head_uuid,
-        anchorUuid: seg.anchor_uuid,
-        tailUuid: seg.tail_uuid,
+        headUuid: seg.head_uuid as UUID,
+        anchorUuid: seg.anchor_uuid as UUID,
+        tailUuid: seg.tail_uuid as UUID,
       },
     }),
   }
@@ -123,7 +124,7 @@ export function toSDKMessages(messages: Message[]): SDKMessage[] {
             session_id: getSessionId(),
             parent_tool_use_id: null,
             uuid: message.uuid,
-            error: message.error,
+            error: message.error as SDKAssistantMessageError | undefined,
           },
         ]
       case 'user':
@@ -225,7 +226,7 @@ export function toSDKRateLimitInfo(
     return undefined
   }
   return {
-    status: limits.status,
+    status: limits.status as SDKRateLimitInfo['status'],
     ...(limits.resetsAt !== undefined && { resetsAt: limits.resetsAt }),
     ...(limits.rateLimitType !== undefined && {
       rateLimitType: limits.rateLimitType,

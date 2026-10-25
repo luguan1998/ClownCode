@@ -5,7 +5,7 @@ import { setPromptId } from 'src/bootstrap/state.js';
 import { builtInCommandNames, type Command, type CommandBase, findCommand, getCommand, getCommandName, hasCommand, type PromptCommand } from 'src/commands.js';
 import { NO_CONTENT_MESSAGE } from 'src/constants/messages.js';
 import type { SetToolJSXFn, ToolUseContext } from 'src/Tool.js';
-import type { AssistantMessage, AttachmentMessage, Message, NormalizedUserMessage, ProgressMessage, UserMessage } from 'src/types/message.js';
+import type { AttachmentMessage, Message, NormalizedAssistantMessage, NormalizedUserMessage, ProgressMessage, UserMessage } from 'src/types/message.js';
 import { addInvokedSkill, getSessionId } from '../../bootstrap/state.js';
 import { COMMAND_MESSAGE_TAG, COMMAND_NAME_TAG } from '../../constants/xml.js';
 import type { CanUseToolFn } from '../../hooks/useCanUseTool.js';
@@ -191,7 +191,7 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
   let toolUseCounter = 0;
 
   // Helper to create a progress message from an agent message
-  const createProgressMessage = (message: AssistantMessage | NormalizedUserMessage): ProgressMessage<AgentProgress> => {
+  const createProgressMessage = (message: NormalizedUserMessage | NormalizedAssistantMessage): ProgressMessage<AgentProgress> => {
     toolUseCounter++;
     return {
       type: 'progress',
@@ -251,7 +251,7 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
         }
         const normalizedMsg = normalizedNew[0];
         if (normalizedMsg && normalizedMsg.type === 'assistant') {
-          progressMessages.push(createProgressMessage(message));
+          progressMessages.push(createProgressMessage(normalizedMsg));
           updateProgress();
         }
       }
@@ -273,7 +273,7 @@ async function executeForkedSlashCommand(command: CommandBase & PromptCommand, a
   logForDebugging(`Forked slash command /${command.name} completed with agent ${agentId}`);
 
   // Prepend debug log for ant users so it appears inside the command output
-  if ("external" === 'ant') {
+  if (false) {
     resultText = `[internal] API calls: ${getDisplayPath(getDumpPromptsPath(agentId))}\n${resultText}`;
   }
 
@@ -426,19 +426,7 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
     }
     logEvent('tengu_input_command', {
       ...eventData,
-      invocation_trigger: 'user-slash' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...("external" === 'ant' && {
-        skill_name: commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-        ...(returnedCommand.type === 'prompt' && {
-          skill_source: returnedCommand.source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        }),
-        ...(returnedCommand.loadedFrom && {
-          skill_loaded_from: returnedCommand.loadedFrom as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        }),
-        ...(returnedCommand.kind && {
-          skill_kind: returnedCommand.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-        })
-      })
+      invocation_trigger: 'user-slash' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
     });
     return {
       messages: [],
@@ -495,18 +483,6 @@ export async function processSlashCommand(inputString: string, precedingInputBlo
   logEvent('tengu_input_command', {
     ...eventData,
     invocation_trigger: 'user-slash' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-    ...("external" === 'ant' && {
-      skill_name: commandName as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-      ...(returnedCommand.type === 'prompt' && {
-        skill_source: returnedCommand.source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      }),
-      ...(returnedCommand.loadedFrom && {
-        skill_loaded_from: returnedCommand.loadedFrom as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      }),
-      ...(returnedCommand.kind && {
-        skill_kind: returnedCommand.kind as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-      })
-    })
   });
 
   // Check if this is a compact result which handle their own synthetic caveat message ordering

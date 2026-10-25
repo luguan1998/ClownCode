@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import type { PendingClassifierCheck } from '../../../types/permissions.js'
 import { isAgentSwarmsEnabled } from '../../../utils/agentSwarmsEnabled.js'
@@ -46,15 +45,8 @@ async function handleSwarmWorkerPermission(
 
   const { ctx, description, updatedInput, suggestions } = params
 
-  // For bash commands, try classifier auto-approval before forwarding to
-  // the leader. Agents await the classifier result (rather than racing it
-  // against user interaction like the main agent).
-  const classifierResult = feature('BASH_CLASSIFIER')
-    ? await ctx.tryClassifier?.(params.pendingClassifierCheck, updatedInput)
-    : null
-  if (classifierResult) {
-    return classifierResult
-  }
+  // Classifier auto-approval is not part of this build (BASH_CLASSIFIER is
+  // disabled), so requests go straight to the leader.
 
   // Forward permission request to the leader via mailbox
   try {

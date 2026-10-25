@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { logEvent } from '../../services/analytics/index.js'
 import { logForDebugging } from '../debug.js'
 import {
@@ -48,7 +47,7 @@ function logLoadOnce(success: boolean): void {
  * parseCommand/parseCommandRaw for the parser to be available. Idempotent.
  */
 export async function ensureInitialized(): Promise<void> {
-  if (feature('TREE_SITTER_BASH') || feature('TREE_SITTER_BASH_SHADOW')) {
+  if (false || false) {
     await ensureParserInitialized()
   }
 }
@@ -58,28 +57,6 @@ export async function parseCommand(
 ): Promise<ParsedCommandData | null> {
   if (!command || command.length > MAX_COMMAND_LENGTH) return null
 
-  // Gate: internal-only until pentest. External builds fall back to legacy
-  // regex/shell-quote path. Guarding the whole body inside the positive
-  // branch lets Bun DCE the NAPI import AND keeps telemetry honest — we
-  // only fire tengu_tree_sitter_load when a load was genuinely attempted.
-  if (feature('TREE_SITTER_BASH')) {
-    await ensureParserInitialized()
-    const mod = getParserModule()
-    logLoadOnce(mod !== null)
-    if (!mod) return null
-
-    try {
-      const rootNode = mod.parse(command)
-      if (!rootNode) return null
-
-      const commandNode = findCommandNode(rootNode, null)
-      const envVars = extractEnvVars(commandNode)
-
-      return { rootNode, envVars, commandNode, originalCommand: command }
-    } catch {
-      return null
-    }
-  }
   return null
 }
 
@@ -105,33 +82,6 @@ export async function parseCommandRaw(
   command: string,
 ): Promise<Node | null | typeof PARSE_ABORTED> {
   if (!command || command.length > MAX_COMMAND_LENGTH) return null
-  if (feature('TREE_SITTER_BASH') || feature('TREE_SITTER_BASH_SHADOW')) {
-    await ensureParserInitialized()
-    const mod = getParserModule()
-    logLoadOnce(mod !== null)
-    if (!mod) return null
-    try {
-      const result = mod.parse(command)
-      // SECURITY: Module loaded; null here = timeout/node-budget abort in
-      // bashParser.ts (PARSE_TIMEOUT_MS=50, MAX_NODES=50_000).
-      // Previously collapsed into `return null` → parse-unavailable → legacy
-      // path, which lacks EVAL_LIKE_BUILTINS — `trap`, `enable`, `hash` leaked.
-      if (result === null) {
-        logEvent('tengu_tree_sitter_parse_abort', {
-          cmdLength: command.length,
-          panic: false,
-        })
-        return PARSE_ABORTED
-      }
-      return result
-    } catch {
-      logEvent('tengu_tree_sitter_parse_abort', {
-        cmdLength: command.length,
-        panic: true,
-      })
-      return PARSE_ABORTED
-    }
-  }
   return null
 }
 

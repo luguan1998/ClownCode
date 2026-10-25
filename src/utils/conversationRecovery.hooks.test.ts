@@ -128,8 +128,8 @@ test('deserializeMessagesWithInterruptDetection strips thinking blocks only for 
     usesAnthropicAccountFlow: () => false,
     isOpenAICompatibleProvider: (provider: string) =>
       provider === 'openai' ||
-      provider === 'gemini' ||
-      provider === 'github' ||
+      false ||
+      false ||
       provider === 'codex',
   }))
 
@@ -171,8 +171,8 @@ test('deserializeMessagesWithInterruptDetection strips thinking blocks only for 
     usesAnthropicAccountFlow: () => false,
     isOpenAICompatibleProvider: (provider: string) =>
       provider === 'openai' ||
-      provider === 'gemini' ||
-      provider === 'github' ||
+      false ||
+      false ||
       provider === 'codex',
   }))
 

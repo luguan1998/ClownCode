@@ -39,7 +39,7 @@ afterEach(() => {
 })
 
 test('logs classified transport diagnostics with category and code', async () => {
-  const debugSpy = mock(() => {})
+  const debugSpy = mock((..._args: unknown[]) => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
     logAntError: () => {},
@@ -67,7 +67,7 @@ test('logs classified transport diagnostics with category and code', async () =>
 
   globalThis.fetch = mock(async () => {
     throw transportError
-  }) as typeof globalThis.fetch
+  }) as unknown as typeof globalThis.fetch
 
   const client = createOpenAIShimClient({}) as {
     beta: {
@@ -97,7 +97,7 @@ test('logs classified transport diagnostics with category and code', async () =>
 })
 
 test('redacts credentials in transport diagnostic URL logs', async () => {
-  const debugSpy = mock(() => {})
+  const debugSpy = mock((..._args: unknown[]) => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
     logAntError: () => {},
@@ -125,7 +125,7 @@ test('redacts credentials in transport diagnostic URL logs', async () => {
 
   globalThis.fetch = mock(async () => {
     throw transportError
-  }) as typeof globalThis.fetch
+  }) as unknown as typeof globalThis.fetch
 
   const client = createOpenAIShimClient({}) as {
     beta: {
@@ -155,7 +155,7 @@ test('redacts credentials in transport diagnostic URL logs', async () => {
   expect(logLine).not.toContain('supersecret@')
 })
 test('logs self-heal localhost fallback with redacted from/to URLs', async () => {
-  const debugSpy = mock(() => {})
+  const debugSpy = mock((..._args: unknown[]) => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
     logAntError: () => {},
@@ -211,7 +211,7 @@ test('logs self-heal localhost fallback with redacted from/to URLs', async () =>
         },
       },
     )
-  }) as typeof globalThis.fetch
+  }) as unknown as typeof globalThis.fetch
 
   const client = createOpenAIShimClient({}) as {
     beta: {
@@ -243,7 +243,7 @@ test('logs self-heal localhost fallback with redacted from/to URLs', async () =>
 })
 
 test('logs self-heal toolless retry for local tool-call incompatibility', async () => {
-  const debugSpy = mock(() => {})
+  const debugSpy = mock((..._args: unknown[]) => {})
   mock.module('../../utils/debug.js', () => ({
     logForDebugging: debugSpy,
     logAntError: () => {},
@@ -303,7 +303,7 @@ test('logs self-heal toolless retry for local tool-call incompatibility', async 
         },
       },
     )
-  }) as typeof globalThis.fetch
+  }) as unknown as typeof globalThis.fetch
 
   const client = createOpenAIShimClient({}) as {
     beta: {

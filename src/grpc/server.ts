@@ -122,7 +122,14 @@ export class GrpcServer {
                   if (reply.toLowerCase() === 'yes' || reply.toLowerCase() === 'y') {
                     resolve({ behavior: 'allow' })
                   } else {
-                    resolve({ behavior: 'deny', reason: 'User denied via gRPC' })
+                    resolve({
+                      behavior: 'deny',
+                      message: 'User denied via gRPC',
+                      decisionReason: {
+                        type: 'other',
+                        reason: 'User denied via gRPC',
+                      },
+                    })
                   }
                 })
               })
@@ -194,7 +201,8 @@ export class GrpcServer {
             if (sessionId) {
               if (!this.sessions.has(sessionId) && this.sessions.size >= MAX_SESSIONS) {
                 // Evict oldest session (Map preserves insertion order)
-                this.sessions.delete(this.sessions.keys().next().value)
+                const oldest = this.sessions.keys().next().value
+                if (oldest) this.sessions.delete(oldest)
               }
               this.sessions.set(sessionId, previousMessages)
             }

@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { randomBytes } from 'crypto'
 import { unwatchFile, watchFile } from 'fs'
 import memoize from 'lodash-es/memoize.js'
@@ -33,15 +32,6 @@ import { getManagedFilePath } from './settings/managedPath.js'
 import type { ThemeSetting } from './theme.js'
 import { PRIMARY_PROJECT_INSTRUCTION_FILE } from './projectInstructions.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const teamMemPaths = feature('TEAMMEM')
-  ? (require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js'))
-  : null
-const ccrAutoConnect = feature('CCR_AUTO_CONNECT')
-  ? (require('../bridge/bridgeEnabled.js') as typeof import('../bridge/bridgeEnabled.js'))
-  : null
-
-/* eslint-enable @typescript-eslint/no-require-imports */
 import type { ImageDimensions } from './imageResizer.js'
 import type { ModelOption } from './model/modelOptions.js'
 import { jsonParse, jsonStringify } from './slowOperations.js'
@@ -1153,18 +1143,12 @@ export function getGlobalConfig(): GlobalConfig {
 }
 
 /**
- * Returns the effective value of remoteControlAtStartup. Precedence:
- *   1. User's explicit config value (always wins — honors opt-out)
- *   2. CCR auto-connect default (internal-only build, GrowthBook-gated)
- *   3. false (Remote Control must be explicitly opted into)
+ * Returns the effective value of remoteControlAtStartup: the user's explicit
+ * config value when set (always wins — honors opt-out), otherwise false
+ * (Remote Control must be explicitly opted into).
  */
 export function getRemoteControlAtStartup(): boolean {
-  const explicit = getGlobalConfig().remoteControlAtStartup
-  if (explicit !== undefined) return explicit
-  if (feature('CCR_AUTO_CONNECT')) {
-    if (ccrAutoConnect?.getCcrAutoConnectDefault()) return true
-  }
-  return false
+  return getGlobalConfig().remoteControlAtStartup ?? false
 }
 
 export function getCustomApiKeyStatus(
@@ -1857,12 +1841,14 @@ export function getMemoryPath(memoryType: MemoryType): string {
       return join(getManagedFilePath(), 'CLAUDE.md')
     case 'AutoMem':
       return getAutoMemEntrypoint()
+    case 'TeamMem': {
+      // Deferred require: teamMemPaths pulls in the GrowthBook module, which
+      // imports this file back — a top-level require would deadlock the cycle.
+      /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+      const teamMemPaths = require('../memdir/teamMemPaths.js') as typeof import('../memdir/teamMemPaths.js')
+      return teamMemPaths.getTeamMemEntrypoint()
+    }
   }
-  // TeamMem is only a valid MemoryType when feature('TEAMMEM') is true
-  if (feature('TEAMMEM')) {
-    return teamMemPaths!.getTeamMemEntrypoint()
-  }
-  return '' // unreachable in external builds where TeamMem is not in MemoryType
 }
 
 export function getManagedClaudeRulesDir(): string {

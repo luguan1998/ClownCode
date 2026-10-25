@@ -96,7 +96,7 @@ export function HooksConfigMenu(t0) {
     t3 = $[4];
   }
   const combinedToolNames = t3;
-  let t4;
+  let t4: ReturnType<typeof groupHooksByEventAndMatcher>;
   if ($[5] !== appStateStore || $[6] !== combinedToolNames) {
     t4 = groupHooksByEventAndMatcher(appStateStore.getState(), combinedToolNames);
     $[5] = appStateStore;

@@ -1,3 +1,4 @@
+import type { InferenceProfileSummary } from '@aws-sdk/client-bedrock'
 import memoize from 'lodash-es/memoize.js'
 import { refreshAndGetAwsCredentials } from '../auth.js'
 import { getAWSRegion, isEnvTruthy } from '../envUtils.js'
@@ -11,7 +12,7 @@ export const getBedrockInferenceProfiles = memoize(async function (): Promise<
     createBedrockClient(),
     import('@aws-sdk/client-bedrock'),
   ])
-  const allProfiles = []
+  const allProfiles: InferenceProfileSummary[] = []
   let nextToken: string | undefined
 
   try {

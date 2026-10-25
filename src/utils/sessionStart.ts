@@ -138,7 +138,7 @@ export async function processSessionStartHooks(
     undefined,
     forceSyncExecution,
   )) {
-    if (hookResult.message) {
+    if (hookResult.message?.type === 'attachment') {
       hookMessages.push(hookResult.message)
     }
     if (
@@ -206,7 +206,7 @@ export async function processSetupHooks(
     undefined,
     forceSyncExecution,
   )) {
-    if (hookResult.message) {
+    if (hookResult.message?.type === 'attachment') {
       hookMessages.push(hookResult.message)
     }
     if (

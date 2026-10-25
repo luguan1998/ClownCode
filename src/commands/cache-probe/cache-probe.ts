@@ -3,7 +3,8 @@ import { resolveProviderRequest } from '../../services/api/providerConfig.js'
 import type { LocalCommandCall } from '../../types/command.js'
 import { logForDebugging } from '../../utils/debug.js'
 import { isEnvTruthy } from '../../utils/envUtils.js'
-import { hydrateGithubModelsTokenFromSecureStorage } from '../../utils/githubModelsCredentials.js'
+// GitHub Models credential hydration is gone with external vendor support.
+const hydrateGithubModelsTokenFromSecureStorage = () => {}
 import { getMainLoopModel } from '../../utils/model/model.js'
 
 const COPILOT_HEADERS: Record<string, string> = {

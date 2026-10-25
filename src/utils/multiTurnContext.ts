@@ -67,11 +67,14 @@ export function addMessageToTurn(message: Message): void {
   const turn = currentTurn || startNewTurn()
   turn.messages.push(message)
   
-  // Update token estimate
-  const content = typeof message.message.content === 'string' 
-    ? message.message.content 
-    : JSON.stringify(message.message.content)
-  turn.tokens += roughTokenCountEstimation(content)
+  // Update token estimate — only user/assistant messages carry API content.
+  if (message.type === 'user' || message.type === 'assistant') {
+    const content =
+      typeof message.message.content === 'string'
+        ? message.message.content
+        : JSON.stringify(message.message.content)
+    turn.tokens += roughTokenCountEstimation(content)
+  }
 }
 
 export function addToolCallToTurn(call: TurnContext['toolCalls'][0]): void {

@@ -30,22 +30,33 @@ function getWindowsSecureStorageFilePath(): string {
   return join(getClaudeConfigHomeDir(), `${resourceName}.secure.dpapi`)
 }
 
+type PowerShellResult = {
+  stdout: string
+  stderr: string
+  exitCode: number | undefined
+}
+
 function runPowerShell(
   script: string,
   options?: { input?: string },
-): ReturnType<typeof execaSync> | null {
+): PowerShellResult | null {
   try {
-    return execaSync('powershell.exe', ['-Command', script], {
+    const result = execaSync('powershell.exe', ['-Command', script], {
       input: options?.input,
       reject: false,
     })
+    return {
+      stdout: `${result.stdout ?? ''}`,
+      stderr: `${result.stderr ?? ''}`,
+      exitCode: result.exitCode,
+    }
   } catch {
     return null
   }
 }
 
 function getFailureWarning(
-  result: ReturnType<typeof execaSync> | null,
+  result: PowerShellResult | null,
   fallback: string,
 ): string {
   const stderr = result?.stderr?.trim()

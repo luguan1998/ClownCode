@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import type {
   Base64ImageSource,
   ContentBlockParam,
@@ -83,6 +82,7 @@ import {
 import {
   getContentSizeEstimate,
   type MCPToolResult,
+  type MCPToolResultBlock,
   mcpContentNeedsTruncation,
   truncateMcpContentIfNeeded,
 } from '../../utils/mcpValidation.js'
@@ -114,16 +114,8 @@ import { buildMcpToolName } from './mcpStringUtils.js'
 import { normalizeNameForMCP } from './normalization.js'
 import { getLoggingSafeMcpBaseUrl } from './utils.js'
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const fetchMcpSkillsForClient = feature('MCP_SKILLS')
-  ? (
-    require('../../skills/mcpSkills.js') as typeof import('../../skills/mcpSkills.js')
-  ).fetchMcpSkillsForClient
-  : null
-
 import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { AssistantMessage } from 'src/types/message.js'
-/* eslint-enable @typescript-eslint/no-require-imports */
 import { classifyMcpToolForCollapse } from '../../tools/MCPTool/classifyForCollapse.js'
 import { clearKeychainCache } from '../../utils/secureStorage/macOsKeychainHelpers.js'
 import { sleep } from '../../utils/sleep.js'
@@ -234,19 +226,14 @@ function getMcpToolTimeoutMs(): number {
 
 import { isClaudeInChromeMCPServer } from '../../utils/claudeInChrome/common.js'
 
-// Lazy: toolRendering.tsx pulls React/ink; only needed when Claude-in-Chrome MCP server is connected
-/* eslint-disable @typescript-eslint/no-require-imports */
-const claudeInChromeToolRendering =
-  (): typeof import('../../utils/claudeInChrome/toolRendering.js') =>
-    require('../../utils/claudeInChrome/toolRendering.js')
 // Lazy: wrapper.tsx → hostAdapter.ts → executor.ts pulls both native modules
 // (@ant/computer-use-input + @ant/computer-use-swift). Runtime-gated by
 // GrowthBook tengu_malort_pedway (see gates.ts).
-const computerUseWrapper = feature('CHICAGO_MCP')
+const computerUseWrapper = false
   ? (): typeof import('../../utils/computerUse/wrapper.js') =>
     require('../../utils/computerUse/wrapper.js')
   : undefined
-const isComputerUseMCPServer = feature('CHICAGO_MCP')
+const isComputerUseMCPServer = false
   ? (
     require('../../utils/computerUse/common.js') as typeof import('../../utils/computerUse/common.js')
   ).isComputerUseMCPServer
@@ -884,81 +871,9 @@ export const connectToServer = memoize(
       } else if (serverRef.type === 'sdk') {
         throw new Error('SDK servers should be handled in print.ts')
       } else if (serverRef.type === 'claudeai-proxy') {
-        logMCPDebug(
-          name,
-          `Initializing claude.ai proxy transport for server ${serverRef.id}`,
+        throw new Error(
+          'claude.ai proxy MCP servers are not supported in this build',
         )
-
-        const tokens = getClaudeAIOAuthTokens()
-        if (!tokens) {
-          throw new Error('No claude.ai OAuth token found')
-        }
-
-        const oauthConfig = getOauthConfig()
-        const proxyUrl = `${oauthConfig.MCP_PROXY_URL}${oauthConfig.MCP_PROXY_PATH.replace('{server_id}', serverRef.id)}`
-
-        logMCPDebug(name, `Using claude.ai proxy at ${proxyUrl}`)
-
-        // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
-        const fetchWithAuth = createClaudeAiProxyFetch(globalThis.fetch)
-
-        const proxyOptions = getProxyFetchOptions()
-        const transportOptions: StreamableHTTPClientTransportOptions = {
-          // Wrap fetchWithAuth with fresh timeout per request
-          fetch: wrapFetchWithTimeout(fetchWithAuth),
-          requestInit: {
-            ...proxyOptions,
-            headers: {
-              'User-Agent': getMCPUserAgent(),
-              'X-Mcp-Client-Session-Id': getSessionId(),
-            },
-          },
-        }
-
-        transport = new StreamableHTTPClientTransport(
-          new URL(proxyUrl),
-          transportOptions,
-        )
-        logMCPDebug(name, `claude.ai proxy transport created successfully`)
-      } else if (
-        (serverRef.type === 'stdio' || !serverRef.type) &&
-        isClaudeInChromeMCPServer(name)
-      ) {
-        // Run the Chrome MCP server in-process to avoid spawning a ~325 MB subprocess
-        const { createChromeContext } = await import(
-          '../../utils/claudeInChrome/mcpServer.js'
-        )
-        const { createClaudeForChromeMcpServer } = await import(
-          '@ant/claude-for-chrome-mcp'
-        )
-        const { createLinkedTransportPair } = await import(
-          './InProcessTransport.js'
-        )
-        const context = createChromeContext(serverRef.env)
-        inProcessServer = createClaudeForChromeMcpServer(context)
-        const [clientTransport, serverTransport] = createLinkedTransportPair()
-        await inProcessServer.connect(serverTransport)
-        transport = clientTransport
-        logMCPDebug(name, `In-process Chrome MCP server started`)
-      } else if (
-        feature('CHICAGO_MCP') &&
-        (serverRef.type === 'stdio' || !serverRef.type) &&
-        isComputerUseMCPServer!(name)
-      ) {
-        // Run the Computer Use MCP server in-process — same rationale as
-        // Chrome above. The package's CallTool handler is a stub; real
-        // dispatch goes through wrapper.tsx's .call() override.
-        const { createComputerUseMcpServerForCli } = await import(
-          '../../utils/computerUse/mcpServer.js'
-        )
-        const { createLinkedTransportPair } = await import(
-          './InProcessTransport.js'
-        )
-        inProcessServer = await createComputerUseMcpServerForCli()
-        const [clientTransport, serverTransport] = createLinkedTransportPair()
-        await inProcessServer.connect(serverTransport)
-        transport = clientTransport
-        logMCPDebug(name, `In-process Computer Use MCP server started`)
       } else if (serverRef.type === 'stdio' || !serverRef.type) {
         const finalCommand =
           process.env.CLAUDE_CODE_SHELL_PREFIX || serverRef.command
@@ -1142,21 +1057,6 @@ export const connectToServer = memoize(
             return handleRemoteAuthFailure(name, serverRef, 'http')
           }
         } else if (
-          serverRef.type === 'claudeai-proxy' &&
-          error instanceof Error
-        ) {
-          logMCPDebug(
-            name,
-            `claude.ai proxy connection failed after ${elapsed}ms: ${error.message}`,
-          )
-          logMCPError(name, error)
-
-          // StreamableHTTPError has a `code` property with the HTTP status
-          const errorCode = (error as Error & { code?: number }).code
-          if (errorCode === 401) {
-            return handleRemoteAuthFailure(name, serverRef, 'claudeai-proxy')
-          }
-        } else if (
           serverRef.type === 'sse-ide' ||
           serverRef.type === 'ws-ide'
         ) {
@@ -1335,7 +1235,7 @@ export const connectToServer = memoize(
         // and close the transport so pending tool calls reject and the next
         // call reconnects with a fresh session ID.
         if (
-          (transportType === 'http' || transportType === 'claudeai-proxy') &&
+          transportType === 'http' &&
           isMcpSessionExpiredError(error)
         ) {
           logMCPDebug(
@@ -1353,8 +1253,7 @@ export const connectToServer = memoize(
         // and trigger reconnection via close if we see repeated failures.
         if (
           transportType === 'sse' ||
-          transportType === 'http' ||
-          transportType === 'claudeai-proxy'
+          transportType === 'http'
         ) {
           // The SDK's StreamableHTTP transport fires this after exhausting its
           // own SSE reconnect attempts (default maxRetries: 2) — but it never
@@ -1410,9 +1309,6 @@ export const connectToServer = memoize(
         fetchToolsForClient.cache.delete(name)
         fetchResourcesForClient.cache.delete(name)
         fetchCommandsForClient.cache.delete(name)
-        if (feature('MCP_SKILLS')) {
-          fetchMcpSkillsForClient!.cache.delete(name)
-        }
 
         connectToServer.cache.delete(key)
         logMCPDebug(name, `Cleared connection cache for reconnection`)
@@ -1688,9 +1584,6 @@ export async function clearServerCache(
   fetchToolsForClient.cache.delete(name)
   fetchResourcesForClient.cache.delete(name)
   fetchCommandsForClient.cache.delete(name)
-  if (feature('MCP_SKILLS')) {
-    fetchMcpSkillsForClient!.cache.delete(name)
-  }
 }
 
 /**
@@ -2017,13 +1910,7 @@ export const fetchToolsForClient = memoizeWithLRU(
               const displayName = tool.annotations?.title || tool.name
               return `${client.name} - ${displayName} (MCP)`
             },
-            ...(isClaudeInChromeMCPServer(client.name) &&
-              (client.config.type === 'stdio' || !client.config.type)
-              ? claudeInChromeToolRendering().getClaudeInChromeMCPToolOverrides(
-                tool.name,
-              )
-              : {}),
-            ...(feature('CHICAGO_MCP') &&
+            ...(false &&
               (client.config.type === 'stdio' || !client.config.type) &&
               isComputerUseMCPServer!(client.name)
               ? computerUseWrapper!().getComputerUseMCPToolOverrides(tool.name)
@@ -2160,7 +2047,7 @@ export async function callIdeRpc(
   toolName: string,
   args: Record<string, unknown>,
   client: ConnectedMCPServer,
-): Promise<string | ContentBlockParam[] | undefined> {
+): Promise<MCPToolResult> {
   const result = await callMCPTool({
     client,
     tool: toolName,
@@ -2214,9 +2101,7 @@ export async function reconnectMcpServerImpl(
     const [tools, mcpCommands, mcpSkills, resources] = await Promise.all([
       fetchToolsForClient(client),
       fetchCommandsForClient(client),
-      feature('MCP_SKILLS') && supportsResources
-        ? fetchMcpSkillsForClient!(client)
-        : Promise.resolve([]),
+      Promise.resolve([]),
       supportsResources ? fetchResourcesForClient(client) : Promise.resolve([]),
     ])
     const commands = [...mcpCommands, ...mcpSkills]
@@ -2387,10 +2272,8 @@ export async function getMcpToolsCommandsAndResources(
       const [tools, mcpCommands, mcpSkills, resources] = await Promise.all([
         fetchToolsForClient(client),
         fetchCommandsForClient(client),
-        // Discover skills from skill:// resources
-        feature('MCP_SKILLS') && supportsResources
-          ? fetchMcpSkillsForClient!(client)
-          : Promise.resolve([]),
+        // Skill discovery from skill:// resources is not supported in this build
+        Promise.resolve([]),
         // Fetch resources if supported
         supportsResources
           ? fetchResourcesForClient(client)
@@ -2521,7 +2404,7 @@ export function prefetchAllMcpResources(
 export async function transformResultContent(
   resultContent: PromptMessage['content'],
   serverName: string,
-): Promise<Array<ContentBlockParam>> {
+): Promise<Array<MCPToolResultBlock>> {
   switch (resultContent.type) {
     case 'text':
       return [
@@ -2589,7 +2472,7 @@ export async function transformResultContent(
             imageBuffer.length,
             ext,
           )
-          const content: MessageParam['content'] = []
+          const content: MCPToolResultBlock[] = []
           if (prefix) {
             content.push({
               type: 'text',
@@ -2645,7 +2528,7 @@ async function persistBlobToTextBlock(
   mimeType: string | undefined,
   serverName: string,
   sourceDescription: string,
-): Promise<Array<ContentBlockParam>> {
+): Promise<Array<MCPToolResultBlock>> {
   const persistId = `mcp-${normalizeNameForMCP(serverName)}-blob-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   const result = await persistBinaryContent(bytes, mimeType, persistId)
 

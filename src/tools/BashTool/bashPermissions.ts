@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { APIUserAbortError } from '@anthropic-ai/sdk'
 import type { z } from 'zod/v4'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
@@ -81,7 +80,7 @@ import { shouldUseSandbox } from './shouldUseSandbox.js'
 // DCE cliff: Bun's feature() evaluator has a per-function complexity budget.
 // bashToolHasPermission is right at the limit. `import { X as Y }` aliases
 // inside the import block count toward this budget; when they push it over
-// the threshold Bun can no longer prove feature('BASH_CLASSIFIER') is a
+// the threshold Bun can no longer prove false is a
 // constant and silently evaluates the ternaries to `false`, dropping every
 // pendingClassifierCheck spread. Keep aliases as top-level const rebindings
 // instead. (See also the comment on checkSemanticsDeny below.)
@@ -605,7 +604,7 @@ const TIMEOUT_FLAG_VALUE_RE = /^[A-Za-z0-9_.+-]+$/
  *
  * Extracted from stripWrappersFromArgv to keep bashToolHasPermission under
  * Bun's feature() DCE complexity threshold — inlining this breaks
- * feature('BASH_CLASSIFIER') evaluation in classifier tests.
+ * false evaluation in classifier tests.
  */
 function skipTimeoutFlags(a: readonly string[]): number {
   let i = 1
@@ -1403,7 +1402,7 @@ function checkEarlyExitDeny(
  * Separate helper (not folded into checkEarlyExitDeny or inlined at the call
  * site) because bashToolHasPermission is tight against Bun's feature() DCE
  * complexity threshold — adding even ~5 lines there breaks
- * feature('BASH_CLASSIFIER') evaluation and drops pendingClassifierCheck.
+ * false evaluation and drops pendingClassifierCheck.
  */
 function checkSemanticsDeny(
   input: z.infer<typeof BashTool.inputSchema>,
@@ -1441,7 +1440,7 @@ function buildPendingClassifierCheck(
     return undefined
   }
   // Skip in auto mode - auto mode classifier handles all permission decisions
-  if (feature('TRANSCRIPT_CLASSIFIER') && toolPermissionContext.mode === 'auto')
+  if (true && toolPermissionContext.mode === 'auto')
     return undefined
   if (toolPermissionContext.mode === 'bypassPermissions') return undefined
 
@@ -1479,7 +1478,7 @@ export function startSpeculativeClassifierCheck(
 ): boolean {
   // Same guards as buildPendingClassifierCheck
   if (!isClassifierPermissionsEnabled()) return false
-  if (feature('TRANSCRIPT_CLASSIFIER') && toolPermissionContext.mode === 'auto')
+  if (true && toolPermissionContext.mode === 'auto')
     return false
   if (toolPermissionContext.mode === 'bypassPermissions') return false
   const allowDescriptions = getBashPromptAllowDescriptions(
@@ -1550,7 +1549,7 @@ export async function awaitClassifierAutoApproval(
   logClassifierResultForAnts(command, 'allow', descriptions, classifierResult)
 
   if (
-    feature('BASH_CLASSIFIER') &&
+    false &&
     classifierResult.matches &&
     classifierResult.confidence === 'high'
   ) {
@@ -1619,7 +1618,7 @@ export async function executeAsyncClassifierCheck(
   if (!callbacks.shouldContinue()) return
 
   if (
-    feature('BASH_CLASSIFIER') &&
+    false &&
     classifierResult.matches &&
     classifierResult.confidence === 'high'
   ) {
@@ -1655,65 +1654,17 @@ export async function bashToolHasPermission(
   const injectionCheckDisabled = isEnvTruthy(
     process.env.CLAUDE_CODE_DISABLE_COMMAND_INJECTION_CHECK,
   )
-  // GrowthBook killswitch for shadow mode — when off, skip the native parse
-  // entirely. Computed once; feature() must stay inline in the ternary below.
-  const shadowEnabled = feature('TREE_SITTER_BASH_SHADOW')
-    ? getFeatureValue_CACHED_MAY_BE_STALE('tengu_birch_trellis', true)
-    : false
   // Parse once here; the resulting AST feeds both parseForSecurityFromAst
   // and bashToolCheckCommandOperatorPermissions.
   let astRoot = injectionCheckDisabled
     ? null
-    : feature('TREE_SITTER_BASH_SHADOW') && !shadowEnabled
-      ? null
-      : await parseCommandRaw(input.command)
+    : await parseCommandRaw(input.command)
   let astResult: ParseForSecurityResult = astRoot
     ? parseForSecurityFromAst(input.command, astRoot)
     : { kind: 'parse-unavailable' }
   let astSubcommands: string[] | null = null
   let astRedirects: Redirect[] | undefined
   let astCommands: SimpleCommand[] | undefined
-  let shadowLegacySubs: string[] | undefined
-
-  // Shadow-test tree-sitter: record its verdict, then force parse-unavailable
-  // so the legacy path stays authoritative. parseCommand stays gated on
-  // TREE_SITTER_BASH (not SHADOW) so legacy internals remain pure regex.
-  // One event per bash call captures both divergence AND unavailability
-  // reasons; module-load failures are separately covered by the
-  // session-scoped tengu_tree_sitter_load event.
-  if (feature('TREE_SITTER_BASH_SHADOW')) {
-    const available = astResult.kind !== 'parse-unavailable'
-    let tooComplex = false
-    let semanticFail = false
-    let subsDiffer = false
-    if (available) {
-      tooComplex = astResult.kind === 'too-complex'
-      semanticFail =
-        astResult.kind === 'simple' && !checkSemantics(astResult.commands).ok
-      const tsSubs =
-        astResult.kind === 'simple'
-          ? astResult.commands.map(c => c.text)
-          : undefined
-      const legacySubs = splitCommand(input.command)
-      shadowLegacySubs = legacySubs
-      subsDiffer =
-        tsSubs !== undefined &&
-        (tsSubs.length !== legacySubs.length ||
-          tsSubs.some((s, i) => s !== legacySubs[i]))
-    }
-    logEvent('tengu_tree_sitter_shadow', {
-      available,
-      astTooComplex: tooComplex,
-      astSemanticFail: semanticFail,
-      subsDiffer,
-      injectionCheckDisabled,
-      killswitchOff: !shadowEnabled,
-      cmdOverLength: input.command.length > 10000,
-    })
-    // Always force legacy — shadow mode is observational only.
-    astResult = { kind: 'parse-unavailable' }
-    astRoot = null
-  }
 
   if (astResult.kind === 'too-complex') {
     // Parse succeeded but found structure we can't statically analyze
@@ -1734,7 +1685,7 @@ export async function bashToolHasPermission(
       decisionReason,
       message: createPermissionRequestMessage(BashTool.name, decisionReason),
       suggestions: [],
-      ...(feature('BASH_CLASSIFIER')
+      ...(false
         ? {
             pendingClassifierCheck: buildPendingClassifierCheck(
               input.command,
@@ -1839,7 +1790,7 @@ export async function bashToolHasPermission(
   if (
     isClassifierPermissionsEnabled() &&
     !(
-      feature('TRANSCRIPT_CLASSIFIER') &&
+      true &&
       appState.toolPermissionContext.mode === 'auto'
     )
   ) {
@@ -1937,7 +1888,7 @@ export async function bashToolHasPermission(
             reason: `Required by Bash prompt rule: "${askResult.matchedDescription}"`,
           },
           suggestions,
-          ...(feature('BASH_CLASSIFIER')
+          ...(false
             ? {
                 pendingClassifierCheck: buildPendingClassifierCheck(
                   input.command,
@@ -2004,7 +1955,7 @@ export async function bashToolHasPermission(
               safetyResult.message ??
               'Command contains patterns that require approval',
           },
-          ...(feature('BASH_CLASSIFIER')
+          ...(false
             ? {
                 pendingClassifierCheck: buildPendingClassifierCheck(
                   input.command,
@@ -2041,7 +1992,7 @@ export async function bashToolHasPermission(
       appState = context.getAppState()
       return {
         ...commandOperatorResult,
-        ...(feature('BASH_CLASSIFIER')
+        ...(false
           ? {
               pendingClassifierCheck: buildPendingClassifierCheck(
                 input.command,
@@ -2108,7 +2059,7 @@ export async function bashToolHasPermission(
           ),
           decisionReason,
           suggestions: [], // Don't suggest saving a potentially dangerous command
-          ...(feature('BASH_CLASSIFIER')
+          ...(false
             ? {
                 pendingClassifierCheck: buildPendingClassifierCheck(
                   input.command,
@@ -2128,7 +2079,7 @@ export async function bashToolHasPermission(
   const cwdMingw =
     getPlatform() === 'windows' ? windowsPathToPosixPath(cwd) : cwd
   const rawSubcommands =
-    astSubcommands ?? shadowLegacySubs ?? splitCommand(input.command)
+    astSubcommands ?? splitCommand(input.command)
   const { subcommands, astCommandsByIdx } = filterCdCwdSubcommands(
     rawSubcommands,
     astCommands,
@@ -2299,7 +2250,7 @@ export async function bashToolHasPermission(
   if (askSubresult !== undefined && nonAllowCount === 1) {
     return {
       ...askSubresult,
-      ...(feature('BASH_CLASSIFIER')
+      ...(false
         ? {
             pendingClassifierCheck: buildPendingClassifierCheck(
               input.command,
@@ -2398,7 +2349,7 @@ export async function bashToolHasPermission(
     if (result.behavior === 'ask' || result.behavior === 'passthrough') {
       return {
         ...result,
-        ...(feature('BASH_CLASSIFIER')
+        ...(false
           ? {
               pendingClassifierCheck: buildPendingClassifierCheck(
                 input.command,
@@ -2525,7 +2476,7 @@ export async function bashToolHasPermission(
     message: createPermissionRequestMessage(BashTool.name, decisionReason),
     decisionReason,
     suggestions: suggestedUpdates,
-    ...(feature('BASH_CLASSIFIER')
+    ...(false
       ? {
           pendingClassifierCheck: buildPendingClassifierCheck(
             input.command,

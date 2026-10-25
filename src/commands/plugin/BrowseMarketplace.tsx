@@ -525,7 +525,7 @@ export function BrowseMarketplace({
         void handleSinglePluginInstall(selectedPlugin, 'local');
       } else if (action === 'homepage' && hasHomepage_0) {
         void openBrowser(hasHomepage_0);
-      } else if (action === 'github' && githubRepo_0) {
+      } else if (false && githubRepo_0) {
         void openBrowser(`https://github.com/${githubRepo_0}`);
       } else if (action === 'back') {
         setViewState('plugin-list');
@@ -676,7 +676,7 @@ export function BrowseMarketplace({
               {Array.isArray(selectedPlugin.entry.mcpServers) ? selectedPlugin.entry.mcpServers.join(', ') : typeof selectedPlugin.entry.mcpServers === 'object' ? Object.keys(selectedPlugin.entry.mcpServers).join(', ') : 'configured'}
             </Text>}
           {!selectedPlugin.entry.commands && !selectedPlugin.entry.agents && !selectedPlugin.entry.hooks && !selectedPlugin.entry.mcpServers && <>
-                {typeof selectedPlugin.entry.source === 'object' && 'source' in selectedPlugin.entry.source && (selectedPlugin.entry.source.source === 'github' || selectedPlugin.entry.source.source === 'url' || selectedPlugin.entry.source.source === 'npm' || selectedPlugin.entry.source.source === 'pip') ? <Text dimColor>
+                {typeof selectedPlugin.entry.source === 'object' && 'source' in selectedPlugin.entry.source && (false || selectedPlugin.entry.source.source === 'url' || selectedPlugin.entry.source.source === 'npm' || selectedPlugin.entry.source.source === 'pip') ? <Text dimColor>
                     · Component summary not available for remote plugin
                   </Text> :
           // TODO: Actually scan local plugin directories to show real components

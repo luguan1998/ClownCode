@@ -17,10 +17,11 @@ import {
 } from './conversationArc.js'
 import { getGlobalGraph, resetGlobalGraph } from './knowledgeGraph.js'
 
-function createMessage(role: string, content: string): any {
+function createMessage(type: 'user' | 'assistant', content: string): any {
   return {
-    message: { role, content, id: 'test', type: 'message', created_at: Date.now() },
-    sender: role,
+    type,
+    message: { role: type, content },
+    sender: type,
   }
 }
 
@@ -126,12 +127,10 @@ describe('conversationArc', () => {
     it('detects phase from block array content', () => {
       initializeArc()
       const blockMessage = {
+        type: 'assistant',
         message: {
           role: 'assistant',
           content: [{ type: 'text', text: 'I will now implement the requested changes.' }],
-          id: 'test',
-          type: 'message',
-          created_at: Date.now(),
         },
         sender: 'assistant',
       }

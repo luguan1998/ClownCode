@@ -222,7 +222,7 @@ export async function* runPostToolUseHooks<Input extends AnyObject, Output>(
         }
       } else {
         try {
-          const cwd = toolUseContext.options?.cwd ?? process.cwd()
+          const cwd = process.cwd()
           const autoFixResult = await runAutoFixCheck({
             lint: autoFixConfig.lint,
             test: autoFixConfig.test,

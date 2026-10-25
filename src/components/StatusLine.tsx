@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { logEvent } from 'src/services/analytics/index.js';
@@ -30,7 +29,7 @@ import { isVimModeEnabled } from './PromptInput/utils.js';
 export function statusLineShouldDisplay(settings: ReadonlySettings): boolean {
   // Assistant mode: statusline fields (model, permission mode, cwd) reflect the
   // REPL/daemon process, not what the agent child is actually running. Hide it.
-  if (feature('KAIROS') && getKairosActive()) return false;
+  if (false && getKairosActive()) return false;
   return settings?.statusLine !== undefined;
 }
 function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200kTokens: boolean, settings: ReadonlySettings, messages: Message[], addedDirs: string[], mainLoopModel: ModelName, vimMode?: VimMode): StatusLineCommandInput {
@@ -48,7 +47,7 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
   const sessionId = getSessionId();
   const sessionName = getCurrentSessionTitle(sessionId);
   const rawUtil = getRawUtilization();
-  const rateLimits: StatusLineCommandInput['rate_limits'] = {
+  const rateLimits: NonNullable<StatusLineCommandInput['rate_limits']> = {
     ...(rawUtil.five_hour && {
       five_hour: {
         used_percentage: rawUtil.five_hour.utilization * 100,
@@ -91,9 +90,9 @@ function buildStatusLineCommandInput(permissionMode: PermissionMode, exceeds200k
       total_input_tokens: getTotalInputTokens(),
       total_output_tokens: getTotalOutputTokens(),
       context_window_size: contextWindowSize,
-      current_usage: currentUsage,
-      used_percentage: contextPercentages.used,
-      remaining_percentage: contextPercentages.remaining
+      current_usage: currentUsage ?? undefined,
+      used_percentage: contextPercentages.used ?? undefined,
+      remaining_percentage: contextPercentages.remaining ?? undefined
     },
     exceeds_200k_tokens: exceeds200kTokens,
     ...((rateLimits.five_hour || rateLimits.seven_day) && {

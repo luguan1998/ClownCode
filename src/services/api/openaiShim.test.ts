@@ -2400,7 +2400,7 @@ test('non-streaming: strips <think> tag block from assistant content', async () 
       }),
       { headers: { 'Content-Type': 'application/json' } },
     )
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
   const result = (await client.beta.messages.create({
@@ -2542,7 +2542,7 @@ test('streaming: strips <think> tag block from assistant content deltas', async 
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
   const result = await client.beta.messages
@@ -2627,7 +2627,7 @@ test('streaming: strips <think> tag split across multiple content chunks', async
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -2688,7 +2688,7 @@ test('streaming: preserves prose without tags (no phrase-based false positive)',
     ])
 
     return makeSseResponse(chunks)
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
   const result = await client.beta.messages
@@ -2723,7 +2723,7 @@ test('classifies localhost transport failures with actionable category marker', 
 
   globalThis.fetch = (async () => {
     throw transportError
-  }) as FetchType
+  }) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 
@@ -2752,7 +2752,7 @@ test('propagates AbortError without wrapping it as transport failure', async () 
   const abortError = new DOMException('The operation was aborted.', 'AbortError')
   globalThis.fetch = (async () => {
     throw abortError
-  }) as FetchType
+  }) as unknown as FetchType
 
   const controller = new AbortController()
   controller.abort()
@@ -2781,7 +2781,7 @@ test('classifies chat-completions endpoint 404 failures with endpoint_not_found 
       headers: {
         'Content-Type': 'text/plain',
       },
-    })) as FetchType
+    })) as unknown as FetchType
 
   const client = createOpenAIShimClient({}) as OpenAIShimClient
 

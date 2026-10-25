@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { memo, type ReactNode, useMemo, useRef } from 'react';
 import { isBridgeEnabled } from '../../bridge/bridgeEnabled.js';
@@ -143,11 +142,11 @@ function PromptInputFooter({
         </Box>
         <Box flexShrink={1} gap={1}>
           {isFullscreen ? null : <Notifications apiKeyStatus={apiKeyStatus} autoUpdaterResult={autoUpdaterResult} debug={debug} isAutoUpdating={isAutoUpdating} verbose={verbose} messages={messages} onAutoUpdaterResult={onAutoUpdaterResult} onChangeIsUpdating={onChangeIsUpdating} ideSelection={ideSelection} mcpClients={mcpClients} isInputWrapped={isInputWrapped} isNarrow={isNarrow} />}
-          {"external" === 'ant' && isUndercover() && <Text dimColor>undercover</Text>}
+          {false && isUndercover() && <Text dimColor>undercover</Text>}
           <BridgeStatusIndicator bridgeSelected={bridgeSelected} />
         </Box>
       </Box>
-      {"external" === 'ant' && <CoordinatorTaskPanel />}
+      {false && <CoordinatorTaskPanel />}
     </>;
 }
 export default memo(PromptInputFooter);
@@ -157,7 +156,7 @@ type BridgeStatusProps = {
 function BridgeStatusIndicator({
   bridgeSelected
 }: BridgeStatusProps): React.ReactNode {
-  if (!feature('BRIDGE_MODE')) return null;
+  if (!false) return null;
 
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   const enabled = useAppState(s => s.replBridgeEnabled);

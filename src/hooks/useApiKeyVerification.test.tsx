@@ -82,10 +82,10 @@ test('useApiKeyVerification resets stale missing status when the session switche
     verifyApiKey: async () => true,
   }))
 
-  // @ts-expect-error cache-busting query string for Bun module mocks
-  const { useApiKeyVerification } = await import(
-    './useApiKeyVerification.ts?switch-to-third-party'
-  )
+  // Cache-busting query string for Bun module mocks; kept in a variable so
+  // TypeScript does not try to resolve the specifier as a file path.
+  const modulePath = './useApiKeyVerification.ts?switch-to-third-party'
+  const { useApiKeyVerification } = await import(modulePath)
 
   function Harness(): React.ReactNode {
     const { status } = useApiKeyVerification()

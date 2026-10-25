@@ -21,10 +21,10 @@ afterEach(() => {
 
 test('does not preconnect when the OpenAI shim is active', async () => {
   delete process.env.CLAUDE_CODE_USE_OPENAI
-  const fetchMock = mock(() =>
+  const fetchMock = mock((..._args: any[]) =>
     Promise.resolve(new Response(null, { status: 200 })),
   )
-  globalThis.fetch = fetchMock as typeof globalThis.fetch
+  globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
 
   const { preconnectAnthropicApi } = await importFreshModule()
   preconnectAnthropicApi()
@@ -35,10 +35,10 @@ test('does not preconnect when the OpenAI shim is active', async () => {
 test('preconnects to an explicitly configured native endpoint', async () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '0'
   process.env.ANTHROPIC_BASE_URL = 'http://anthropic.internal'
-  const fetchMock = mock(() =>
+  const fetchMock = mock((..._args: any[]) =>
     Promise.resolve(new Response(null, { status: 200 })),
   )
-  globalThis.fetch = fetchMock as typeof globalThis.fetch
+  globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
 
   const { preconnectAnthropicApi } = await importFreshModule()
   preconnectAnthropicApi()
@@ -49,10 +49,10 @@ test('preconnects to an explicitly configured native endpoint', async () => {
 
 test('does not preconnect without a configured endpoint', async () => {
   process.env.CLAUDE_CODE_USE_OPENAI = '0'
-  const fetchMock = mock(() =>
+  const fetchMock = mock((..._args: any[]) =>
     Promise.resolve(new Response(null, { status: 200 })),
   )
-  globalThis.fetch = fetchMock as typeof globalThis.fetch
+  globalThis.fetch = fetchMock as unknown as typeof globalThis.fetch
 
   const { preconnectAnthropicApi } = await importFreshModule()
   preconnectAnthropicApi()

@@ -55,14 +55,18 @@ export function GlobalSearchDialog(t0) {
   } else {
     t1 = $[0];
   }
-  const [matches, setMatches] = useState(t1);
+  const [matches, setMatches] = useState<Match[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [query, setQuery] = useState("");
-  const [focused, setFocused] = useState(undefined);
-  const [preview, setPreview] = useState(null);
-  const abortRef = useRef(null);
-  const timeoutRef = useRef(null);
+  const [focused, setFocused] = useState<Match | undefined>(undefined);
+  const [preview, setPreview] = useState<{
+    file: string;
+    line: number;
+    content: string;
+  } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   let t2;
   let t3;
   if ($[1] === Symbol.for("react.memo_cache_sentinel")) {
@@ -234,7 +238,12 @@ export function GlobalSearchDialog(t0) {
   }
   let t14;
   if ($[24] !== preview || $[25] !== previewWidth || $[26] !== query) {
-    t14 = m_8 => preview?.file === m_8.file && preview.line === m_8.line ? <><Text dimColor={true}>{truncatePathMiddle(m_8.file, previewWidth)}:{m_8.line}</Text>{preview.content.split("\n").map((line_0, i) => <Text key={i}>{highlightMatch(truncateToWidth(line_0, previewWidth), query)}</Text>)}</> : <LoadingState message={"Loading\u2026"} dimColor={true} />;
+    t14 = m_8 => {
+      if (preview && preview.file === m_8.file && preview.line === m_8.line) {
+        return <><Text dimColor={true}>{truncatePathMiddle(m_8.file, previewWidth)}:{m_8.line}</Text>{preview.content.split("\n").map((line_0, i) => <Text key={i}>{highlightMatch(truncateToWidth(line_0, previewWidth), query)}</Text>)}</>;
+      }
+      return <LoadingState message={"Loading\u2026"} dimColor={true} />;
+    };
     $[24] = preview;
     $[25] = previewWidth;
     $[26] = query;
@@ -269,7 +278,7 @@ function _temp4(query_0, controller_1, setMatches_0, setTruncated_0, setIsSearch
     if (controller_1.signal.aborted) {
       return;
     }
-    const parsed = [];
+    const parsed: Array<{ file: string; line: number; text: string }> = [];
     for (const line of lines) {
       const m_1 = parseRipgrepLine(line);
       if (!m_1) {

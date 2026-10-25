@@ -1,0 +1,47 @@
+/**
+ * Provenance labels for model queries. Used for cache-TTL decisions and
+ * analytics-free logging. Type-only module (no runtime exports consumed).
+ */
+
+export type QuerySource =
+  | 'agent:builtin'
+  | `agent:builtin:${string}`
+  | 'agent:custom'
+  | 'agent:default'
+  | 'agent_creation'
+  | 'agent_summary'
+  | 'auto_dream'
+  | 'auto_mode'
+  | 'auto_mode_critique'
+  | 'away_summary'
+  | 'bash_extract_prefix'
+  | 'compact'
+  | 'extract_memories'
+  | 'feedback'
+  | 'generate_session_title'
+  | 'hook_agent'
+  | 'hook_prompt'
+  | 'insights'
+  | 'magic_docs'
+  | 'marble_origami'
+  | 'mcp_datetime_parse'
+  | 'memdir_relevance'
+  | 'model_validation'
+  | 'permission_explainer'
+  | 'prompt_suggestion'
+  | 'rename_generate_name'
+  | 'repl'
+  | 'repl_main_thread'
+  | `repl_main_thread:outputStyle:${string}`
+  | 'sdk'
+  | 'session_memory'
+  | 'session_search'
+  | 'side_question'
+  | 'skill_improvement'
+  | 'skill_improvement_apply'
+  | 'speculation'
+  | 'tool_use_summary_generation'
+  | 'user'
+  | 'verification_agent'
+  | 'web_fetch_apply'
+  | 'web_search_tool'

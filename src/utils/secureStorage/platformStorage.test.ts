@@ -5,7 +5,7 @@ import { windowsCredentialStorage } from "./windowsCredentialStorage.js";
 import { getSecureStorageServiceName, CREDENTIALS_SERVICE_SUFFIX } from "./macOsKeychainHelpers.js";
 
 // Mock execaSync
-const mockExecaSync = mock(() => ({ exitCode: 0, stdout: "" }));
+const mockExecaSync = mock((..._args: any[]) => ({ exitCode: 0, stdout: "" }));
 mock.module("execa", () => ({
   execaSync: mockExecaSync,
 }));

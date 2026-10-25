@@ -1,5 +1,4 @@
 import { c as _c } from "react-compiler-runtime";
-import { feature } from 'bun:bundle';
 import { APIUserAbortError } from '@anthropic-ai/sdk';
 import * as React from 'react';
 import { useCallback } from 'react';
@@ -12,7 +11,7 @@ import { consumeSpeculativeClassifierCheck, peekSpeculativeClassifierCheck } fro
 import { BASH_TOOL_NAME } from '../tools/BashTool/toolName.js';
 import type { AssistantMessage } from '../types/message.js';
 import { recordAutoModeDenial } from '../utils/autoModeDenials.js';
-import { clearClassifierChecking, setClassifierApproval, setYoloClassifierApproval } from '../utils/classifierApprovals.js';
+import { clearClassifierChecking, setYoloClassifierApproval } from '../utils/classifierApprovals.js';
 import { logForDebugging } from '../utils/debug.js';
 import { AbortError } from '../utils/errors.js';
 import { logError } from '../utils/log.js';
@@ -40,7 +39,7 @@ function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
           if (ctx.resolveIfAborted(resolve)) {
             return;
           }
-          if (feature("TRANSCRIPT_CLASSIFIER") && result.decisionReason?.type === "classifier" && result.decisionReason.classifier === "auto-mode") {
+          if (true && result.decisionReason?.type === "classifier" && result.decisionReason.classifier === "auto-mode") {
             setYoloClassifierApproval(toolUseID, result.decisionReason.reason);
           }
           ctx.logDecision({
@@ -74,7 +73,7 @@ function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
                 decision: "reject",
                 source: "config"
               });
-              if (feature("TRANSCRIPT_CLASSIFIER") && result.decisionReason?.type === "classifier" && result.decisionReason.classifier === "auto-mode") {
+              if (true && result.decisionReason?.type === "classifier" && result.decisionReason.classifier === "auto-mode") {
                 recordAutoModeDenial({
                   toolName: tool.name,
                   display: description,
@@ -95,9 +94,6 @@ function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
               if (appState.toolPermissionContext.awaitAutomatedChecksBeforeDialog) {
                 const coordinatorDecision = await handleCoordinatorPermission({
                   ctx,
-                  ...(feature("BASH_CLASSIFIER") ? {
-                    pendingClassifierCheck: result.pendingClassifierCheck
-                  } : {}),
                   updatedInput: result.updatedInput,
                   suggestions: result.suggestions,
                   permissionMode: appState.toolPermissionContext.mode
@@ -113,9 +109,6 @@ function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
               const swarmDecision = await handleSwarmWorkerPermission({
                 ctx,
                 description,
-                ...(feature("BASH_CLASSIFIER") ? {
-                  pendingClassifierCheck: result.pendingClassifierCheck
-                } : {}),
                 updatedInput: result.updatedInput,
                 suggestions: result.suggestions
               });
@@ -123,47 +116,11 @@ function useCanUseTool(setToolUseConfirmQueue, setToolPermissionContext) {
                 resolve(swarmDecision);
                 return;
               }
-              if (feature("BASH_CLASSIFIER") && result.pendingClassifierCheck && tool.name === BASH_TOOL_NAME && !appState.toolPermissionContext.awaitAutomatedChecksBeforeDialog) {
-                const speculativePromise = peekSpeculativeClassifierCheck((input as {
-                  command: string;
-                }).command);
-                if (speculativePromise) {
-                  const raceResult = await Promise.race([speculativePromise.then(_temp), new Promise(_temp2)]);
-                  if (ctx.resolveIfAborted(resolve)) {
-                    return;
-                  }
-                  if (raceResult.type === "result" && raceResult.result.matches && raceResult.result.confidence === "high" && feature("BASH_CLASSIFIER")) {
-                    consumeSpeculativeClassifierCheck((input as {
-                      command: string;
-                    }).command);
-                    const matchedRule = raceResult.result.matchedDescription ?? undefined;
-                    if (matchedRule) {
-                      setClassifierApproval(toolUseID, matchedRule);
-                    }
-                    ctx.logDecision({
-                      decision: "accept",
-                      source: {
-                        type: "classifier"
-                      }
-                    });
-                    resolve(ctx.buildAllow(result.updatedInput ?? input as Record<string, unknown>, {
-                      decisionReason: {
-                        type: "classifier" as const,
-                        classifier: "bash_allow" as const,
-                        reason: `Allowed by prompt rule: "${raceResult.result.matchedDescription}"`
-                      }
-                    }));
-                    return;
-                  }
-                }
-              }
               handleInteractivePermission({
                 ctx,
                 description,
                 result,
                 awaitAutomatedChecksBeforeDialog: appState.toolPermissionContext.awaitAutomatedChecksBeforeDialog,
-                bridgeCallbacks: feature("BRIDGE_MODE") ? appState.replBridgePermissionCallbacks : undefined,
-                channelCallbacks: feature("KAIROS") || feature("KAIROS_CHANNELS") ? appState.channelPermissionCallbacks : undefined
               }, resolve);
               return;
             }

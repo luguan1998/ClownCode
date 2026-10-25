@@ -1,3 +1,9 @@
+type PromiseWithResolvers<T> = {
+  promise: Promise<T>
+  resolve: (value: T | PromiseLike<T>) => void
+  reject: (reason?: unknown) => void
+}
+
 /**
  * Polyfill for Promise.withResolvers() (ES2024, Node 22+).
  * package.json declares "engines": { "node": ">=18.0.0" } so we can't use the native one.

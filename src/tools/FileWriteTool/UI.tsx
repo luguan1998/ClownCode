@@ -268,7 +268,14 @@ function WriteRejectionDiff(t0) {
   }
   return t5;
 }
-function WriteRejectionBody(t0) {
+function WriteRejectionBody(t0: {
+  promise: Promise<RejectionDiffData>;
+  filePath: string;
+  firstLine: string | null;
+  createFallback: React.ReactNode;
+  style?: 'condensed';
+  verbose: boolean;
+}) {
   const $ = _c(8);
   const {
     promise,

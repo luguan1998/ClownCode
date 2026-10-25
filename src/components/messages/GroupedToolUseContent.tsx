@@ -38,10 +38,10 @@ export function GroupedToolUseContent({
     }
   }
   const toolUsesData = message.messages.map(msg => {
-    const content = msg.message.content[0];
+    const content = msg.message.content[0] as ToolUseBlockParam;
     const result = resultsByToolUseId.get(content.id);
     return {
-      param: content as ToolUseBlockParam,
+      param: content,
       isResolved: lookups.resolvedToolUseIDs.has(content.id),
       isError: lookups.erroredToolUseIDs.has(content.id),
       isInProgress: inProgressToolUseIDs.has(content.id),

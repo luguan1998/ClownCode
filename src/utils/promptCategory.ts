@@ -18,10 +18,7 @@ export function getQuerySourceForAgent(
   isBuiltInAgent: boolean,
 ): QuerySource {
   if (isBuiltInAgent) {
-    // TODO: avoid this cast
-    return agentType
-      ? (`agent:builtin:${agentType}` as QuerySource)
-      : 'agent:default'
+    return agentType ? `agent:builtin:${agentType}` : 'agent:default'
   } else {
     return 'agent:custom'
   }
@@ -44,6 +41,6 @@ export function getQuerySourceForREPL(): QuerySource {
   // All styles in OUTPUT_STYLE_CONFIG are built-in
   const isBuiltIn = style in OUTPUT_STYLE_CONFIG
   return isBuiltIn
-    ? (`repl_main_thread:outputStyle:${style}` as QuerySource)
+    ? `repl_main_thread:outputStyle:${style}`
     : 'repl_main_thread:outputStyle:custom'
 }

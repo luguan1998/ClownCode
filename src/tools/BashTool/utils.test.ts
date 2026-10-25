@@ -178,7 +178,14 @@ describe('createContentSummary', () => {
 
   test('summarizes image blocks', () => {
     const content = [
-      { type: 'image' as const, data: 'base64data', mimeType: 'image/png' },
+      {
+        type: 'image' as const,
+        source: {
+          type: 'base64' as const,
+          media_type: 'image/png' as const,
+          data: 'base64data',
+        },
+      },
     ]
     const result = createContentSummary(content)
     expect(result).toContain('1 image')
@@ -187,7 +194,14 @@ describe('createContentSummary', () => {
   test('summarizes mixed content', () => {
     const content = [
       { type: 'text' as const, text: 'Description' },
-      { type: 'image' as const, data: 'base64data', mimeType: 'image/png' },
+      {
+        type: 'image' as const,
+        source: {
+          type: 'base64' as const,
+          media_type: 'image/png' as const,
+          data: 'base64data',
+        },
+      },
       { type: 'text' as const, text: 'More text' },
     ]
     const result = createContentSummary(content)

@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { extname, isAbsolute, resolve } from 'path'
 import {
   fileHistoryEnabled,
@@ -113,7 +112,7 @@ export const NotebookEditTool = buildTool({
     return outputSchema()
   },
   toAutoClassifierInput(input) {
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       const mode = input.edit_mode ?? 'replace'
       return `${input.notebook_path} ${mode}: ${input.new_source}`
     }
@@ -377,14 +376,14 @@ export const NotebookEditTool = buildTool({
       }
 
       const language = notebook.metadata.language_info?.name ?? 'python'
-      let new_cell_id = undefined
+      let new_cell_id: string | undefined = undefined
       if (
         notebook.nbformat > 4 ||
-        (notebook.nbformat === 4 && notebook.nbformat_minor >= 5)
+        (notebook.nbformat === 4 && (notebook.nbformat_minor ?? 0) >= 5)
       ) {
         if (edit_mode === 'insert') {
           new_cell_id = Math.random().toString(36).substring(2, 15)
-        } else if (cell_id !== null) {
+        } else if (cell_id !== undefined) {
           new_cell_id = cell_id
         }
       }

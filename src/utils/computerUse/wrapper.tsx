@@ -12,7 +12,7 @@
  * they're likely stable but we don't depend on that.
  *
  * External callers reach this via the lazy require thunk in `client.ts`, gated
- * on `feature('CHICAGO_MCP')`. Runtime enablement is controlled by the
+ * on `false`. Runtime enablement is controlled by the
  * GrowthBook gate `tengu_malort_pedway` (see gates.ts).
  */
 
@@ -87,7 +87,7 @@ export function buildSessionContext(): ComputerUseSessionContext {
       const cu = prev.computerUseMcpState;
       const prevApps = cu?.allowedApps;
       const prevFlags = cu?.grantFlags;
-      const sameApps = prevApps?.length === apps.length && apps.every((a, i) => prevApps[i]?.bundleId === a.bundleId);
+      const sameApps = prevApps?.length === apps.length && apps.every((a, i) => prevApps?.[i]?.bundleId === a.bundleId);
       const sameFlags = prevFlags?.clipboardRead === flags.clipboardRead && prevFlags?.clipboardWrite === flags.clipboardWrite && prevFlags?.systemKeyCombos === flags.systemKeyCombos;
       return sameApps && sameFlags ? prev : {
         ...prev,
@@ -119,7 +119,7 @@ export function buildSessionContext(): ComputerUseSessionContext {
     // was true, onDisplayResolvedForApps re-sets the key in the same tick.
     onResolvedDisplayUpdated: id => tuc().setAppState(prev => {
       const cu = prev.computerUseMcpState;
-      if (cu?.selectedDisplayId === id && !cu.displayPinnedByModel && cu.displayResolvedForApps === undefined) {
+      if (cu?.selectedDisplayId === id && !cu?.displayPinnedByModel && cu?.displayResolvedForApps === undefined) {
         return prev;
       }
       return {

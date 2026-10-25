@@ -56,7 +56,9 @@ function extractImage(
   return undefined
 }
 
-function processOutput(output: NotebookCellOutput) {
+function processOutput(
+  output: NotebookCellOutput,
+): NotebookCellSourceOutput | undefined {
   switch (output.output_type) {
     case 'stream':
       return {
@@ -67,14 +69,16 @@ function processOutput(output: NotebookCellOutput) {
     case 'display_data':
       return {
         output_type: output.output_type,
-        text: processOutputText(output.data?.['text/plain']),
+        text: processOutputText(
+          output.data?.['text/plain'] as string | string[] | undefined,
+        ),
         image: output.data && extractImage(output.data),
       }
     case 'error':
       return {
         output_type: output.output_type,
         text: processOutputText(
-          `${output.ename}: ${output.evalue}\n${output.traceback.join('\n')}`,
+          `${output.ename}: ${output.evalue}\n${(output.traceback as string[] | undefined)?.join('\n') ?? ''}`,
         ),
       }
   }
@@ -100,7 +104,9 @@ function processCell(
   }
 
   if (cell.cell_type === 'code' && cell.outputs?.length) {
-    const outputs = cell.outputs.map(processOutput)
+    const outputs = cell.outputs
+      .map(processOutput)
+      .filter((o): o is NotebookCellSourceOutput => o !== undefined)
     if (!includeLargeOutputs && isLargeOutputs(outputs)) {
       cellData.outputs = [
         {
@@ -117,7 +123,7 @@ function processCell(
 }
 
 function cellContentToToolResult(cell: NotebookCellSource): TextBlockParam {
-  const metadata = []
+  const metadata: string[] = []
   if (cell.cellType !== 'code') {
     metadata.push(`<cell_type>${cell.cellType}</cell_type>`)
   }
@@ -169,7 +175,10 @@ export async function readNotebook(
   const buffer = await getFsImplementation().readFileBytes(fullPath)
   const content = buffer.toString('utf-8')
   const notebook = jsonParse(content) as NotebookContent
-  const language = notebook.metadata.language_info?.name ?? 'python'
+  const languageInfo = notebook.metadata.language_info as
+    | { name?: string }
+    | undefined
+  const language = languageInfo?.name ?? 'python'
   if (cellId) {
     const cell = notebook.cells.find(c => c.id === cellId)
     if (!cell) {

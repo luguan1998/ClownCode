@@ -802,8 +802,9 @@ async function* openaiStreamToAnthropic(
     },
   }
 
-  const reader = response.body?.getReader()
-  if (!reader) return
+  const responseBody = response.body
+  if (!responseBody) return
+  const reader = responseBody.getReader()
 
   const decoder = new TextDecoder()
   let buffer = ''
@@ -842,7 +843,7 @@ async function* openaiStreamToAnthropic(
           clearTimeout(timeoutId)
           if (signal && abortCleanup) signal.removeEventListener('abort', abortCleanup)
           if (result.value) lastDataTime = Date.now()
-          resolve(result)
+          resolve(result as ReadableStreamReadResult<Uint8Array>)
         },
         err => {
           clearTimeout(timeoutId)
@@ -973,6 +974,9 @@ async function* openaiStreamToAnthropic(
                 normalizeAtStop,
               })
 
+              const extraContent = tc.extra_content
+              const geminiSignature = (extraContent?.google as any)
+                ?.thought_signature
               yield {
                 type: 'content_block_start',
                 index: toolBlockIndex,
@@ -981,14 +985,9 @@ async function* openaiStreamToAnthropic(
                   id: tc.id,
                   name: tc.function.name,
                   input: {},
-                  ...(tc.extra_content ? { extra_content: tc.extra_content } : {}),
+                  ...(extraContent ? { extra_content: extraContent } : {}),
                   // Extract Gemini signature from extra_content
-                  ...((tc.extra_content?.google as any)?.thought_signature
-                    ? {
-                        signature: (tc.extra_content.google as any)
-                          .thought_signature,
-                      }
-                    : {}),
+                  ...(geminiSignature ? { signature: geminiSignature } : {}),
                 },
               }
               contentBlockIndex++
@@ -1636,6 +1635,15 @@ class OpenAIShimMessages {
         throwClassifiedTransportError(error, requestUrl, failure)
       }
 
+      if (!response) {
+        throw APIError.generate(
+          503,
+          undefined,
+          'OpenAI API request failed: no response',
+          new Headers(),
+        )
+      }
+
       if (response.ok) {
         let tokensIn = 0
         let tokensOut = 0
@@ -1792,16 +1800,17 @@ class OpenAIShimMessages {
           tc.function.name,
           tc.function.arguments,
         )
+        const extraContent = tc.extra_content
+        const geminiSignature = (extraContent?.google as any)
+          ?.thought_signature
         content.push({
           type: 'tool_use',
           id: tc.id,
           name: tc.function.name,
           input,
-          ...(tc.extra_content ? { extra_content: tc.extra_content } : {}),
+          ...(extraContent ? { extra_content: extraContent } : {}),
           // Extract Gemini signature from extra_content
-          ...((tc.extra_content?.google as any)?.thought_signature
-            ? { signature: (tc.extra_content.google as any).thought_signature }
-            : {}),
+          ...(geminiSignature ? { signature: geminiSignature } : {}),
         })
       }
     }

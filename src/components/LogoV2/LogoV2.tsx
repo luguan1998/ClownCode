@@ -25,15 +25,13 @@ import { getStartupPerfLogPath, isDetailedProfilingEnabled } from 'src/utils/sta
 import { EmergencyTip } from './EmergencyTip.js';
 import { VoiceModeNotice } from './VoiceModeNotice.js';
 import { Opus1mMergeNotice } from './Opus1mMergeNotice.js';
-import { feature } from 'bun:bundle';
-
 // Conditional require so ChannelsNotice.tsx tree-shakes when both flags are
 // false. A module-scope helper component inside a feature() ternary does NOT
 // tree-shake (docs/feature-gating.md); the require pattern eliminates the
 // whole file. VoiceModeNotice uses the unsafe helper pattern but VOICE_MODE
 // is external: true so it's moot there.
 /* eslint-disable @typescript-eslint/no-require-imports */
-const ChannelsNoticeModule = feature('KAIROS') || feature('KAIROS_CHANNELS') ? require('./ChannelsNotice.js') as typeof import('./ChannelsNotice.js') : null;
+const ChannelsNoticeModule = false || false ? require('./ChannelsNotice.js') as typeof import('./ChannelsNotice.js') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { SandboxManager } from 'src/utils/sandbox/sandbox-adapter.js';
 import { useShowGuestPassesUpsell, incrementGuestPassesSeenCount } from './GuestPassesUpsell.js';
@@ -221,26 +219,18 @@ export function LogoV2() {
     }
     let t19;
     let t20;
-    let t21;
-    let t22;
     if ($[25] === Symbol.for("react.memo_cache_sentinel")) {
       t19 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text dimColor={true}>Use /issue to report model behavior issues</Text></Box>;
       t20 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text color="warning">[internal] Logs:</Text><Text dimColor={true}>API calls: {getDisplayPath(getDumpPromptsPath())}</Text><Text dimColor={true}>Debug logs: {getDisplayPath(getDebugLogPath())}</Text>{isDetailedProfilingEnabled() && <Text dimColor={true}>Startup Perf: {getDisplayPath(getStartupPerfLogPath())}</Text>}</Box>;
-      t21 = false && <GateOverridesWarning />;
-      t22 = false && <ExperimentEnrollmentNotice />;
       $[25] = t19;
       $[26] = t20;
-      $[27] = t21;
-      $[28] = t22;
     } else {
       t19 = $[25];
       t20 = $[26];
-      t21 = $[27];
-      t22 = $[28];
     }
     let t23;
     if ($[29] !== t18) {
-      t23 = <>{t11}{t12}{t13}{t14}{t15}{t16}{t17}{t18}{t19}{t20}{t21}{t22}</>;
+      t23 = <>{t11}{t12}{t13}{t14}{t15}{t16}{t17}{t18}{t19}{t20}</>;
       $[29] = t18;
       $[30] = t23;
     } else {
@@ -317,18 +307,7 @@ export function LogoV2() {
     } else {
       t17 = $[41];
     }
-    let t18;
-    let t19;
-    if ($[42] === Symbol.for("react.memo_cache_sentinel")) {
-      t18 = false && <GateOverridesWarning />;
-      t19 = false && <ExperimentEnrollmentNotice />;
-      $[42] = t18;
-      $[43] = t19;
-    } else {
-      t18 = $[42];
-      t19 = $[43];
-    }
-    return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor="inactive" borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns}><Text bold={true}>{welcomeMessage}</Text>{t12}{t13}<Text dimColor={true}>{billingType}</Text><Text dimColor={true}>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}{t18}{t19}</>;
+    return <><OffscreenFreeze><Box flexDirection="column" borderStyle="round" borderColor="inactive" borderText={t11} paddingX={1} paddingY={1} alignItems="center" width={columns}><Text bold={true}>{welcomeMessage}</Text>{t12}{t13}<Text dimColor={true}>{billingType}</Text><Text dimColor={true}>{agentName ? `@${agentName} · ${truncatedCwd}` : truncatedCwd}</Text></Box></OffscreenFreeze>{t14}{t15}{t16}{t17}</>;
   }
   const welcomeMessage_0 = formatWelcomeMessage(username);
   const modelLine = showAccountIdentity && !process.env.IS_DEMO && config.oauthAccount?.organizationName ? `${modelDisplayName} · ${billingType} · ${config.oauthAccount.organizationName}` : `${modelDisplayName} · ${billingType}`;
@@ -498,26 +477,18 @@ export function LogoV2() {
   }
   let t37;
   let t38;
-  let t39;
-  let t40;
   if ($[86] === Symbol.for("react.memo_cache_sentinel")) {
     t37 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text dimColor={true}>Use /issue to report model behavior issues</Text></Box>;
     t38 = false && !process.env.DEMO_VERSION && <Box paddingLeft={2} flexDirection="column"><Text color="warning">[internal] Logs:</Text><Text dimColor={true}>API calls: {getDisplayPath(getDumpPromptsPath())}</Text><Text dimColor={true}>Debug logs: {getDisplayPath(getDebugLogPath())}</Text>{isDetailedProfilingEnabled() && <Text dimColor={true}>Startup Perf: {getDisplayPath(getStartupPerfLogPath())}</Text>}</Box>;
-    t39 = false && <GateOverridesWarning />;
-    t40 = false && <ExperimentEnrollmentNotice />;
     $[86] = t37;
     $[87] = t38;
-    $[88] = t39;
-    $[89] = t40;
   } else {
     t37 = $[86];
     t38 = $[87];
-    t39 = $[88];
-    t40 = $[89];
   }
   let t41;
   if ($[90] !== t28 || $[91] !== t35 || $[92] !== t36) {
-    t41 = <>{t28}{t29}{t30}{t31}{t32}{t33}{t34}{t35}{t36}{t37}{t38}{t39}{t40}</>;
+    t41 = <>{t28}{t29}{t30}{t31}{t32}{t33}{t34}{t35}{t36}{t37}{t38}</>;
     $[90] = t28;
     $[91] = t35;
     $[92] = t36;

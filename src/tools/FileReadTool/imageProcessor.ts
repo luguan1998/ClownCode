@@ -58,7 +58,7 @@ export async function getImageProcessor(): Promise<SharpFunction> {
       if ((imageProcessor as { __stub?: boolean }).__stub) {
         throw new ImageProcessorUnavailableError()
       }
-      const sharp = imageProcessor.sharp || imageProcessor.default
+      const sharp = (imageProcessor.sharp || imageProcessor.default) as SharpFunction
       imageProcessorModule = { default: sharp }
       return sharp
     } catch (e) {

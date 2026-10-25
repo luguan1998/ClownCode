@@ -61,7 +61,7 @@ export function GenerateStep(): ReactNode {
       agentType: '',
       systemPrompt: '',
       whenToUse: '',
-      generatedAgent: undefined,
+      finalAgent: undefined,
       wasGenerated: false
     });
     setPrompt('');
@@ -96,7 +96,7 @@ export function GenerateStep(): ReactNode {
         agentType: generated.identifier,
         whenToUse: generated.whenToUse,
         systemPrompt: generated.systemPrompt,
-        generatedAgent: generated,
+        finalAgent: generated,
         isGenerating: false,
         wasGenerated: true
       });

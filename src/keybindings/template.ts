@@ -22,7 +22,7 @@ function filterReservedShortcuts(blocks: KeybindingBlock[]): KeybindingBlock[] {
 
   return blocks
     .map(block => {
-      const filteredBindings: Record<string, string | null> = {}
+      const filteredBindings: KeybindingBlock['bindings'] = {}
       for (const [key, action] of Object.entries(block.bindings)) {
         if (!reservedKeys.has(normalizeKeyForComparison(key))) {
           filteredBindings[key] = action

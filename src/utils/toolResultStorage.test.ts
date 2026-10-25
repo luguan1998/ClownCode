@@ -31,10 +31,17 @@ test('applyToolResultReplacementsToMessages replaces matching tool results and p
   expect(next).not.toBe(messages)
   expect(next[0]).toBe(unrelated)
   expect(next[1]).not.toBe(oversizedResult)
-  expect((next[1]!.message.content as Array<{ content: string }>)[0]!.content).toBe(
-    replacement,
-  )
-  expect(next[1]!.toolUseResult).toBeUndefined()
+  const replaced = next[1]
+  if (!replaced) throw new Error('expected a replacement message')
+  if (replaced.type !== 'user') throw new Error('expected a user message')
+  const content = replaced.message.content
+  if (typeof content === 'string') throw new Error('expected tool result blocks')
+  const firstBlock = content[0]
+  if (!firstBlock || firstBlock.type !== 'tool_result') {
+    throw new Error('expected a tool_result block')
+  }
+  expect(firstBlock.content).toBe(replacement)
+  expect(replaced.toolUseResult).toBeUndefined()
 })
 
 test('applyToolResultReplacementsToMessages is idempotent when messages are already hydrated', () => {

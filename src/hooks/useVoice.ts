@@ -401,9 +401,6 @@ export function useVoice({
           const replayBuffer = fullAudioRef.current
           await sleep(250)
           if (isStale()) return
-          const stt = normalizeLanguageForSTT(getInitialSettings().language)
-          const keyterms = await getVoiceKeyterms()
-          if (isStale()) return
           await new Promise<void>(resolve => {
             void connectVoiceStream(
               {
@@ -442,7 +439,6 @@ export function useVoice({
                   })
                 },
               },
-              { language: stt.code, keyterms },
             ).then(
               c => {
                 if (!c) resolve()
@@ -973,10 +969,6 @@ export function useVoice({
               )
             }
           },
-        },
-        {
-          language: stt.code,
-          keyterms,
         },
       ).then(conn => {
         if (isStale()) {

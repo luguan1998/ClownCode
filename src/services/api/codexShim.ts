@@ -437,8 +437,9 @@ function isStrictResponsesSchema(schema: unknown): boolean {
 }
 
 async function* readSseEvents(response: Response, signal?: AbortSignal): AsyncGenerator<CodexSseEvent> {
-  const reader = response.body?.getReader()
-  if (!reader) return
+  const responseBody = response.body
+  if (!responseBody) return
+  const reader = responseBody.getReader()
 
   const decoder = new TextDecoder()
   let buffer = ''
@@ -472,7 +473,7 @@ async function* readSseEvents(response: Response, signal?: AbortSignal): AsyncGe
           clearTimeout(timeoutId)
           if (signal && abortCleanup) signal.removeEventListener('abort', abortCleanup)
           if (result.value) lastDataTime = Date.now()
-          resolve(result)
+          resolve(result as ReadableStreamReadResult<Uint8Array>)
         },
         err => {
           clearTimeout(timeoutId)

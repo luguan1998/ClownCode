@@ -70,9 +70,6 @@ export function modelSupportsMaxEffort(model: string): boolean {
   if (model.toLowerCase().includes('opus-4-6')) {
     return true
   }
-  if (process.env.USER_TYPE === 'ant' && resolveAntModel(model)) {
-    return true
-  }
   return false
 }
 
@@ -86,7 +83,7 @@ export function isOpenAIEffortLevel(value: string): value is OpenAIEffortLevel {
 
 export function modelUsesOpenAIEffort(model: string): boolean {
   const provider = getAPIProvider()
-  return provider === 'openai' || provider === 'codex'
+  return provider === 'openai'
 }
 
 export function getAvailableEffortLevels(model: string): EffortLevel[] | OpenAIEffortLevel[] {
@@ -336,27 +333,6 @@ export function getOpusDefaultEffortConfig(): OpusDefaultEffortConfig {
 export function getDefaultEffortForModel(
   model: string,
 ): EffortValue | undefined {
-  if (process.env.USER_TYPE === 'ant') {
-    const config = getAntModelOverrideConfig()
-    const isDefaultModel =
-      config?.defaultModel !== undefined &&
-      model.toLowerCase() === config.defaultModel.toLowerCase()
-    if (isDefaultModel && config?.defaultModelEffortLevel) {
-      return config.defaultModelEffortLevel
-    }
-    const antModel = resolveAntModel(model)
-    if (antModel) {
-      if (antModel.defaultEffortLevel) {
-        return antModel.defaultEffortLevel
-      }
-      if (antModel.defaultEffortValue !== undefined) {
-        return antModel.defaultEffortValue
-      }
-    }
-    // Always default ants to undefined/high
-    return undefined
-  }
-
   // IMPORTANT: Do not change the default effort level without notifying
   // the model launch DRI and research. Default effort is a sensitive setting
   // that can greatly affect model quality and bashing.

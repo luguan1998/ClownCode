@@ -4,7 +4,6 @@
  */
 
 import type { ModelOption } from './modelOptions.js'
-import { getAPIProvider } from './providers.js'
 import { isEnvTruthy } from '../envUtils.js'
 
 export function isNvidiaNimProvider(): boolean {
@@ -14,10 +13,7 @@ export function isNvidiaNimProvider(): boolean {
   }
   // Also check if using NVIDIA NIM endpoint
   const baseUrl = process.env.OPENAI_BASE_URL ?? ''
-  if (baseUrl.includes('nvidia') || baseUrl.includes('integrate.api.nvidia')) {
-    return true
-  }
-  return getAPIProvider() === 'nvidia-nim'
+  return baseUrl.includes('nvidia') || baseUrl.includes('integrate.api.nvidia')
 }
 
 function getNvidiaNimModels(): ModelOption[] {

@@ -1158,13 +1158,7 @@ export async function readImageWithTokenBudget(
       logError(e)
       // Fallback: heavily compressed version from the SAME buffer
       try {
-        const sharpModule = await import('sharp')
-        const sharp =
-          (
-            sharpModule as {
-              default?: typeof sharpModule
-            } & typeof sharpModule
-          ).default || sharpModule
+        const { default: sharp } = await import('sharp')
 
         const fallbackBuffer = await sharp(imageBuffer)
           .resize(400, 400, {

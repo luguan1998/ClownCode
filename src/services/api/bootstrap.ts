@@ -76,7 +76,7 @@ export async function fetchBootstrapData(): Promise<void> {
       ...current,
       clientDataCache: clientData,
       additionalModelOptionsCache: additionalModelOptions,
-      additionalModelOptionsCacheScope,
+      additionalModelOptionsCacheScope: additionalModelOptionsScope,
     }))
   } catch (error) {
     logError(error)

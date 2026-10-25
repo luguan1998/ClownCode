@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useNotifications } from '../context/notifications.js';
@@ -20,7 +19,7 @@ import { useVoiceEnabled } from './useVoiceEnabled.js';
 // was loaded before the spy was installed (test ordering independence).
 const voiceNs: {
   useVoice: typeof import('./useVoice.js').useVoice;
-} = feature('VOICE_MODE') ? require('./useVoice.js') : {
+} = false ? require('./useVoice.js') : {
   useVoice: ({
     enabled: _e
   }: {
@@ -217,99 +216,12 @@ export function useVoiceIntegration({
     }
   }, [setInputValueRaw, insertTextRef]);
 
-  // Voice state selectors. useVoiceEnabled = user intent (settings) +
-  // auth + GB kill-switch, with the auth half memoized on authVersion so
-  // render loops never hit a cold keychain spawn.
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  const voiceEnabled = feature('VOICE_MODE') ? useVoiceEnabled() : false;
-  const voiceState = feature('VOICE_MODE') ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useVoiceState(s => s.voiceState) : 'idle' as const;
-  const voiceInterimTranscript = feature('VOICE_MODE') ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useVoiceState(s_0 => s_0.voiceInterimTranscript) : '';
+  // Voice mode is not available in this build, so every voice entry point stays
+  // disabled.
+  const voiceEnabled = false;
 
-  // Set the voice anchor for focus mode (where recording starts via terminal
-  // focus, not key hold). Key-hold sets the anchor in stripTrailing.
-  useEffect(() => {
-    if (!feature('VOICE_MODE')) return;
-    if (voiceState === 'recording' && voicePrefixRef.current === null) {
-      const input = inputValueRef.current;
-      const offset_0 = insertTextRef.current?.cursorOffset ?? input.length;
-      voicePrefixRef.current = input.slice(0, offset_0);
-      voiceSuffixRef.current = input.slice(offset_0);
-      lastSetInputRef.current = input;
-    }
-    if (voiceState === 'idle') {
-      voicePrefixRef.current = null;
-      voiceSuffixRef.current = '';
-      lastSetInputRef.current = null;
-    }
-  }, [voiceState, inputValueRef, insertTextRef]);
-
-  // Live-update the prompt input with the interim transcript as voice
-  // transcribes speech. The prefix (user-typed text before the cursor) is
-  // preserved and the transcript is inserted between prefix and suffix.
-  useEffect(() => {
-    if (!feature('VOICE_MODE')) return;
-    if (voicePrefixRef.current === null) return;
-    const prefix_0 = voicePrefixRef.current;
-    const suffix_0 = voiceSuffixRef.current;
-    // Submit race: if the input isn't what this hook last set it to, the
-    // user submitted (clearing it) or edited it. voicePrefixRef is only
-    // cleared on voiceState→idle, so it's still set during the 'processing'
-    // window between CloseStream and WS close — this catches refined
-    // TranscriptText arriving then and re-filling a cleared input.
-    if (inputValueRef.current !== lastSetInputRef.current) return;
-    const needsSpace = prefix_0.length > 0 && !/\s$/.test(prefix_0) && voiceInterimTranscript.length > 0;
-    // Don't gate on voiceInterimTranscript.length -- when interim clears to ''
-    // after handleVoiceTranscript sets the final text, the trailing space
-    // between prefix and suffix must still be preserved.
-    const needsTrailingSpace = suffix_0.length > 0 && !/^\s/.test(suffix_0);
-    const leadingSpace = needsSpace ? ' ' : '';
-    const trailingSpace = needsTrailingSpace ? ' ' : '';
-    const newValue_0 = prefix_0 + leadingSpace + voiceInterimTranscript + trailingSpace + suffix_0;
-    // Position cursor after the transcribed text (before suffix)
-    const cursorPos = prefix_0.length + leadingSpace.length + voiceInterimTranscript.length;
-    if (insertTextRef.current) {
-      insertTextRef.current.setInputWithCursor(newValue_0, cursorPos);
-    } else {
-      setInputValueRaw(newValue_0);
-    }
-    lastSetInputRef.current = newValue_0;
-  }, [voiceInterimTranscript, setInputValueRaw, inputValueRef, insertTextRef]);
-  const handleVoiceTranscript = useCallback((text: string) => {
-    if (!feature('VOICE_MODE')) return;
-    const prefix_1 = voicePrefixRef.current;
-    // No voice anchor — voice was reset (or never started). Nothing to do.
-    if (prefix_1 === null) return;
-    const suffix_1 = voiceSuffixRef.current;
-    // Submit race: finishRecording() → user presses Enter (input cleared)
-    // → WebSocket close → this callback fires with stale prefix/suffix.
-    // If the input isn't what this hook last set (via the interim effect
-    // or anchor), the user submitted or edited — don't re-fill. Comparing
-    // against `text.length` would false-positive when the final is longer
-    // than the interim (ASR routinely adds punctuation/corrections).
-    if (inputValueRef.current !== lastSetInputRef.current) return;
-    const needsSpace_0 = prefix_1.length > 0 && !/\s$/.test(prefix_1) && text.length > 0;
-    const needsTrailingSpace_0 = suffix_1.length > 0 && !/^\s/.test(suffix_1) && text.length > 0;
-    const leadingSpace_0 = needsSpace_0 ? ' ' : '';
-    const trailingSpace_0 = needsTrailingSpace_0 ? ' ' : '';
-    const newInput = prefix_1 + leadingSpace_0 + text + trailingSpace_0 + suffix_1;
-    // Position cursor after the transcribed text (before suffix)
-    const cursorPos_0 = prefix_1.length + leadingSpace_0.length + text.length;
-    if (insertTextRef.current) {
-      insertTextRef.current.setInputWithCursor(newInput, cursorPos_0);
-    } else {
-      setInputValueRaw(newInput);
-    }
-    lastSetInputRef.current = newInput;
-    // Update the prefix to include this chunk so focus mode can continue
-    // appending subsequent transcripts after it.
-    voicePrefixRef.current = prefix_1 + leadingSpace_0 + text;
-  }, [setInputValueRaw, inputValueRef, insertTextRef]);
   const voice = voiceNs.useVoice({
-    onTranscript: handleVoiceTranscript,
+    onTranscript: () => {},
     onError: (message: string) => {
       addNotification({
         key: 'voice-error',
@@ -323,21 +235,8 @@ export function useVoiceIntegration({
     focusMode: false
   });
 
-  // Compute the character range of interim (not-yet-finalized) transcript
-  // text in the input value, so the UI can dim it.
-  const interimRange = useMemo((): InterimRange | null => {
-    if (!feature('VOICE_MODE')) return null;
-    if (voicePrefixRef.current === null) return null;
-    if (voiceInterimTranscript.length === 0) return null;
-    const prefix_2 = voicePrefixRef.current;
-    const needsSpace_1 = prefix_2.length > 0 && !/\s$/.test(prefix_2) && voiceInterimTranscript.length > 0;
-    const start = prefix_2.length + (needsSpace_1 ? 1 : 0);
-    const end = start + voiceInterimTranscript.length;
-    return {
-      start,
-      end
-    };
-  }, [voiceInterimTranscript]);
+  // Interim transcript is always empty in this build, so there is no range to dim.
+  const interimRange: InterimRange | null = null;
   return {
     stripTrailing,
     resetAnchor,
@@ -388,8 +287,8 @@ export function useVoiceKeybindingHandler({
   const keybindingContext = useOptionalKeybindingContext();
   const isModalOverlayActive = useIsModalOverlayActive();
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  const voiceEnabled = feature('VOICE_MODE') ? useVoiceEnabled() : false;
-  const voiceState = feature('VOICE_MODE') ?
+  const voiceEnabled = false ? useVoiceEnabled() : false;
+  const voiceState = false ?
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
   useVoiceState(s => s.voiceState) : 'idle';
 

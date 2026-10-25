@@ -28,7 +28,7 @@ export type Property = {
 };
 export type Diagnostic = React.ReactNode;
 export function buildSandboxProperties(): Property[] {
-  if ("external" !== 'ant') {
+  if (true) {
     return [];
   }
   const isSandboxed = SandboxManager.isSandboxingEnabled();
@@ -267,7 +267,7 @@ export function buildAPIProviderProperties(): Property[] {
         value: anthropicBaseUrl
       });
     }
-  } else if (apiProvider === 'bedrock') {
+  } else if (false) {
     const bedrockBaseUrl = process.env.BEDROCK_BASE_URL;
     if (bedrockBaseUrl) {
       properties.push({
@@ -284,7 +284,7 @@ export function buildAPIProviderProperties(): Property[] {
         value: 'AWS auth skipped'
       });
     }
-  } else if (apiProvider === 'vertex') {
+  } else if (false) {
     const vertexBaseUrl = process.env.VERTEX_BASE_URL;
     if (vertexBaseUrl) {
       properties.push({
@@ -308,7 +308,7 @@ export function buildAPIProviderProperties(): Property[] {
         value: 'GCP auth skipped'
       });
     }
-  } else if (apiProvider === 'foundry') {
+  } else if (false) {
     const foundryBaseUrl = process.env.ANTHROPIC_FOUNDRY_BASE_URL;
     if (foundryBaseUrl) {
       properties.push({
@@ -382,7 +382,7 @@ export function buildAPIProviderProperties(): Property[] {
         value: redactSecretValueForDisplay(modelDisplay, process.env) ?? modelDisplay
       });
     }
-  } else if (apiProvider === 'gemini') {
+  } else if (false) {
     const geminiBaseUrl = process.env.GEMINI_BASE_URL;
     if (geminiBaseUrl) {
       properties.push({

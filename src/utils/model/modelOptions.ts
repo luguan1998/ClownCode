@@ -34,7 +34,6 @@ import {
 import { has1mContext } from '../context.js'
 import { getGlobalConfig } from '../config.js'
 import { getCachedOllamaModelOptions, isOllamaProvider } from './ollamaModels.js'
-import { getAntModels } from './antModels.js'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
 
@@ -330,24 +329,6 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
     return [defaultOption]
   }
 
-  if (process.env.USER_TYPE === 'ant') {
-    // Build options from antModels config
-    const antModelOptions: ModelOption[] = getAntModels().map(m => ({
-      value: m.alias,
-      label: m.label,
-      description: m.description ?? `[internal] ${m.label} (${m.model})`,
-    }))
-
-    return [
-      getDefaultOptionForUser(),
-      ...antModelOptions,
-      getMergedOpus1MOption(fastMode),
-      getSonnet46Option(),
-      getSonnet46_1MOption(),
-      getHaiku45Option(),
-    ]
-  }
-
   if (isClaudeAISubscriber()) {
     if (isMaxSubscriber() || isTeamPremiumSubscriber()) {
       // Max and Team Premium users: Opus is default, show Sonnet as alternative
@@ -440,7 +421,6 @@ function getModelOptionsBase(fastMode = false): ModelOption[] {
   } else {
     payg3pOptions.push(getHaikuOption())
   }
-  payg3pOptions.push(...profileModelOptions)
   return payg3pOptions
 }
 
@@ -528,7 +508,7 @@ function getKnownModelOption(model: string): ModelOption | null {
 }
 
 export function getModelOptions(fastMode = false): ModelOption[] {
-  if (getAPIProvider() === 'github') {
+  if (false) {
     return filterModelOptionsByAllowlist(getModelOptionsBase(fastMode))
   }
 

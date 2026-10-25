@@ -102,11 +102,10 @@ import {
 import { getAPIContextManagement } from '../compact/apiMicrocompact.js'
 
 /* eslint-disable @typescript-eslint/no-require-imports */
-const autoModeStateModule = feature('TRANSCRIPT_CLASSIFIER')
+const autoModeStateModule = true
   ? (require('../../utils/permissions/autoModeState.js') as typeof import('../../utils/permissions/autoModeState.js'))
   : null
 
-import { feature } from 'bun:bundle'
 import type { ClientOptions } from '@anthropic-ai/sdk'
 import {
   APIConnectionTimeoutError,
@@ -298,7 +297,7 @@ export function getExtraBodyParams(betaHeaders?: string[]): JsonObject {
 
   // Anti-distillation: send fake_tools opt-in for 1P CLI only
   if (
-    feature('ANTI_DISTILLATION_CC')
+    false
       ? process.env.CLAUDE_CODE_ENTRYPOINT === 'cli' &&
         shouldIncludeFirstPartyOnlyBetas() &&
         getFeatureValue_CACHED_MAY_BE_STALE(
@@ -404,7 +403,7 @@ function should1hCacheTTL(querySource?: QuerySource): boolean {
   // 3P Bedrock users get 1h TTL when opted in via env var — they manage their own billing
   // No GrowthBook gating needed since 3P users don't have GrowthBook configured
   if (
-    getAPIProvider() === 'bedrock' &&
+    false &&
     isEnvTruthy(process.env.ENABLE_PROMPT_CACHING_1H_BEDROCK)
   ) {
     return true
@@ -668,7 +667,7 @@ export function assistantMessageToMessageParam(
           ...(i === message.message.content.length - 1 &&
           _.type !== 'thinking' &&
           _.type !== 'redacted_thinking' &&
-          (feature('CONNECTOR_TEXT') ? !isConnectorTextBlock(_) : true)
+          (false ? !isConnectorTextBlock(_) : true)
             ? enablePromptCaching
               ? { cache_control: getCacheControl({ querySource }) }
               : {}
@@ -951,13 +950,13 @@ function getPreviousRequestIdFromMessages(
 }
 
 function isMedia(
-  block: BetaContentBlockParam,
+  block: { type: string },
 ): block is BetaImageBlockParam | BetaRequestDocumentBlock {
   return block.type === 'image' || block.type === 'document'
 }
 
 function isToolResult(
-  block: BetaContentBlockParam,
+  block: { type: string },
 ): block is BetaToolResultBlockParam {
   return block.type === 'tool_result'
 }
@@ -1068,7 +1067,7 @@ async function* queryModel(
   const previousRequestId = getPreviousRequestIdFromMessages(messages)
 
   const resolvedModel =
-    getAPIProvider() === 'bedrock' &&
+    false &&
     options.model.includes('application-inference-profile')
       ? ((await getInferenceProfileBackingModel(options.model)) ??
         options.model)
@@ -1188,7 +1187,7 @@ async function* queryModel(
   // Header differs by provider: 1P/Foundry use advanced-tool-use, Vertex/Bedrock use tool-search-tool
   // For Bedrock, this header must go in extraBodyParams, not the betas array
   const toolSearchHeader = useToolSearch ? getToolSearchBetaHeader() : null
-  if (toolSearchHeader && getAPIProvider() !== 'bedrock') {
+  if (toolSearchHeader && true) {
     if (!betas.includes(toolSearchHeader)) {
       betas.push(toolSearchHeader)
     }
@@ -1200,7 +1199,7 @@ async function* queryModel(
   // internal-only CACHE_EDITING_BETA_HEADER constant.
   let cachedMCEnabled = false
   let cacheEditingBetaHeader = ''
-  if (feature('CACHED_MICROCOMPACT')) {
+  if (true) {
     const {
       isCachedMicrocompactEnabled,
       isModelSupportedForCacheEditing,
@@ -1412,7 +1411,7 @@ async function* queryModel(
   // per-call so non-agentic queries keep their own stable header set.
 
   let afkHeaderLatched = getAfkModeHeaderLatched() === true
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
+  if (true) {
     if (
       !afkHeaderLatched &&
       isAgenticQuery &&
@@ -1431,7 +1430,7 @@ async function* queryModel(
   }
 
   let cacheEditingHeaderLatched = getCacheEditingHeaderLatched() === true
-  if (feature('CACHED_MICROCOMPACT')) {
+  if (true) {
     if (
       !cacheEditingHeaderLatched &&
       cachedMCEnabled &&
@@ -1463,7 +1462,7 @@ async function* queryModel(
 
   const effort = resolveAppliedEffort(options.model, options.effortValue)
 
-  if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+  if (true) {
     // Exclude defer_loading tools from the hash -- the API strips them from the
     // prompt, so they never affect the actual cache key. Including them creates
     // false-positive "tool schemas changed" breaks when tools are discovered or
@@ -1551,13 +1550,7 @@ async function* queryModel(
     }
 
     // For Bedrock, include both model-based betas and dynamically-added tool search header
-    const bedrockBetas =
-      getAPIProvider() === 'bedrock'
-        ? [
-            ...getBedrockExtraBodyParamsBetas(retryContext.model),
-            ...(toolSearchHeader ? [toolSearchHeader] : []),
-          ]
-        : []
+    const bedrockBetas: string[] = []
     const extraBodyParams = getExtraBodyParams(bedrockBetas)
 
     const outputConfig: BetaOutputConfig = {
@@ -1662,7 +1655,7 @@ async function* queryModel(
 
     // AFK mode beta: latched once auto mode is first activated. Still gated
     // by isAgenticQuery per-call so classifiers/compaction don't get it.
-    if (feature('TRANSCRIPT_CLASSIFIER')) {
+    if (true) {
       if (
         afkHeaderLatched &&
         shouldIncludeFirstPartyOnlyBetas() &&
@@ -2074,25 +2067,8 @@ async function* queryModel(
               })
               throw new RangeError('Content block not found')
             }
-            if (
-              feature('CONNECTOR_TEXT') &&
-              delta.type === 'connector_text_delta'
-            ) {
-              if (contentBlock.type !== 'connector_text') {
-                logEvent('tengu_streaming_error', {
-                  error_type:
-                    'content_block_type_mismatch_connector_text' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                  expected_type:
-                    'connector_text' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                  actual_type:
-                    contentBlock.type as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
-                })
-                throw new Error('Content block is not a connector_text block')
-              }
-              contentBlock.connector_text += delta.connector_text
-            } else {
-              switch (delta.type) {
-                case 'citations_delta':
+            switch (delta.type) {
+              case 'citations_delta':
                   // TODO: handle citations
                   break
                 case 'input_json_delta':
@@ -2136,13 +2112,6 @@ async function* queryModel(
                   contentBlock.text += delta.text
                   break
                 case 'signature_delta':
-                  if (
-                    feature('CONNECTOR_TEXT') &&
-                    contentBlock.type === 'connector_text'
-                  ) {
-                    contentBlock.signature = delta.signature
-                    break
-                  }
                   if (contentBlock.type !== 'thinking') {
                     logEvent('tengu_streaming_error', {
                       error_type:
@@ -2171,7 +2140,6 @@ async function* queryModel(
                   contentBlock.thinking += delta.thinking
                   break
               }
-            }
             // Capture research from content_block_delta if available (internal only).
             // Always overwrite with the latest value.
             if (process.env.USER_TYPE === 'ant' && 'research' in part) {
@@ -2391,7 +2359,7 @@ async function* queryModel(
       }
 
       // Check if the cache actually broke based on response tokens
-      if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+      if (true) {
         void checkResponseForCacheBreak(
           options.querySource,
           usage.cache_read_input_tokens,
@@ -2842,7 +2810,7 @@ async function* queryModel(
   }
 
   // Mark all registered tools as sent to API so they become eligible for deletion
-  if (feature('CACHED_MICROCOMPACT') && cachedMCEnabled) {
+  if (true && cachedMCEnabled) {
     markToolsSentToAPIState()
   }
 
@@ -2978,7 +2946,7 @@ export function updateUsage(
     // so the string is eliminated from external builds by dead code elimination.
     // Uses the same > 0 guard as other token fields to prevent message_delta
     // from overwriting the real value with 0.
-    ...(feature('CACHED_MICROCOMPACT')
+    ...(true
       ? {
           cache_deleted_input_tokens:
             (partUsage as unknown as { cache_deleted_input_tokens?: number })
@@ -3032,7 +3000,7 @@ export function accumulateUsage(
     },
     // See comment in updateUsage — field is not on NonNullableUsage to keep
     // the string out of external builds.
-    ...(feature('CACHED_MICROCOMPACT')
+    ...(true
       ? {
           cache_deleted_input_tokens:
             ((totalUsage as unknown as { cache_deleted_input_tokens?: number })

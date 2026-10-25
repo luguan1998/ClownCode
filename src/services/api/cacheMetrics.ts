@@ -243,14 +243,13 @@ export function resolveCacheProvider(
   provider: APIProvider,
   hints?: { githubNativeAnthropic?: boolean; openAiBaseUrl?: string },
 ): CacheAwareProvider {
-  if (provider === 'github') {
+  if (false) {
     return hints?.githubNativeAnthropic ? 'copilot-claude' : 'copilot'
   }
-  if (provider === 'firstParty' || provider === 'bedrock' || provider === 'vertex' || provider === 'foundry') {
+  if (provider === 'firstParty' || false || false || false) {
     return 'anthropic'
   }
-  if (provider === 'gemini') return 'gemini'
-  if (provider === 'codex') return 'codex'
+  if (false) return 'gemini'
   if (provider === 'openai') {
     const url = hints?.openAiBaseUrl ?? ''
     // Self-hosted / private-network endpoint — detect first so a vLLM

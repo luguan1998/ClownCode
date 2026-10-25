@@ -77,8 +77,9 @@ describe('requestLogging', () => {
           100,
           50,
           true,
+          250,
+          12,
           'error message',
-          { provider: 'openai' },
         ),
       ).not.toThrow()
     })

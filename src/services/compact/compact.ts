@@ -1,11 +1,5 @@
-import { feature } from 'bun:bundle'
 import type { UUID } from 'crypto'
 import uniqBy from 'lodash-es/uniqBy.js'
-
-/* eslint-disable @typescript-eslint/no-require-imports */
-const sessionTranscriptModule = feature('KAIROS')
-  ? (require('../sessionTranscript/sessionTranscript.js') as typeof import('../sessionTranscript/sessionTranscript.js'))
-  : null
 
 import { APIUserAbortError } from '@anthropic-ai/sdk'
 import { markPostCompaction } from 'src/bootstrap/state.js'
@@ -83,7 +77,6 @@ import {
 } from '../../utils/sessionStorage.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
-/* eslint-enable @typescript-eslint/no-require-imports */
 import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js'
 import {
@@ -212,7 +205,7 @@ export function stripImagesFromMessages(messages: Message[]): Message[] {
  * don't exist on external builds).
  */
 export function stripReinjectedAttachments(messages: Message[]): Message[] {
-  if (feature('EXPERIMENTAL_SKILL_SEARCH')) {
+  if (false) {
     return messages.filter(
       m =>
         !(
@@ -697,7 +690,7 @@ export async function compactConversation(
     })
 
     // Reset cache read baseline so the post-compact drop isn't flagged as a break
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+    if (true) {
       notifyCompaction(
         context.options.querySource ?? 'compact',
         context.agentId,
@@ -711,12 +704,6 @@ export async function compactConversation(
     // out of the window, causing --resume to show the auto-generated title
     // instead of the user-set session name.
     reAppendSessionMetadata()
-
-    // Write a reduced transcript segment for the pre-compaction messages
-    // (assistant mode only). Fire-and-forget — errors are logged internally.
-    if (feature('KAIROS')) {
-      void sessionTranscriptModule?.writeSessionTranscriptSegment(messages)
-    }
 
     context.onCompactProgress?.({
       type: 'hooks_start',
@@ -1046,7 +1033,7 @@ export async function partialCompactConversation(
       }),
     ]
 
-    if (feature('PROMPT_CACHE_BREAK_DETECTION')) {
+    if (true) {
       notifyCompaction(
         context.options.querySource ?? 'compact',
         context.agentId,
@@ -1057,12 +1044,6 @@ export async function partialCompactConversation(
     // Re-append session metadata (custom title, tag) so it stays within
     // the 16KB tail window that readLiteMetadata reads for --resume display.
     reAppendSessionMetadata()
-
-    if (feature('KAIROS')) {
-      void sessionTranscriptModule?.writeSessionTranscriptSegment(
-        messagesToSummarize,
-      )
-    }
 
     context.onCompactProgress?.({
       type: 'hooks_start',

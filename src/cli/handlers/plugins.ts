@@ -475,7 +475,7 @@ export async function marketplaceAddHandler(
 
     if (options.sparse && options.sparse.length > 0) {
       if (
-        marketplaceSource.source === 'github' ||
+        false ||
         marketplaceSource.source === 'git'
       ) {
         marketplaceSource = {
@@ -503,11 +503,7 @@ export async function marketplaceAddHandler(
 
     clearAllCaches()
 
-    let sourceType = marketplaceSource.source
-    if (marketplaceSource.source === 'github') {
-      sourceType =
-        marketplaceSource.repo as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
-    }
+    const sourceType = marketplaceSource.source
     logEvent('tengu_marketplace_added', {
       source_type:
         sourceType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -540,7 +536,6 @@ export async function marketplaceListHandler(options: {
         return {
           name,
           source: source?.source,
-          ...(source?.source === 'github' && { repo: source.repo }),
           ...(source?.source === 'git' && { url: source.url }),
           ...(source?.source === 'url' && { url: source.url }),
           ...(source?.source === 'directory' && { path: source.path }),
@@ -564,10 +559,7 @@ export async function marketplaceListHandler(options: {
 
       if (marketplace?.source) {
         const src = marketplace.source
-        if (src.source === 'github') {
-          // biome-ignore lint/suspicious/noConsole:: intentional console output
-          console.log(`    Source: GitHub (${src.repo})`)
-        } else if (src.source === 'git') {
+        if (src.source === 'git') {
           // biome-ignore lint/suspicious/noConsole:: intentional console output
           console.log(`    Source: Git (${src.url})`)
         } else if (src.source === 'url') {

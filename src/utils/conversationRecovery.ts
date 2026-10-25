@@ -54,23 +54,9 @@ import type { ContentReplacementRecord } from './toolResultStorage.js'
 // Dead code elimination: internal-only tool names are conditionally required so
 // their strings don't leak into external builds. Static imports always bundle.
 /* eslint-disable @typescript-eslint/no-require-imports */
-const BRIEF_TOOL_NAME: string | null =
-  feature('KAIROS') || feature('KAIROS_BRIEF')
-    ? (
-        require('../tools/BriefTool/prompt.js') as typeof import('../tools/BriefTool/prompt.js')
-      ).BRIEF_TOOL_NAME
-    : null
-const LEGACY_BRIEF_TOOL_NAME: string | null =
-  feature('KAIROS') || feature('KAIROS_BRIEF')
-    ? (
-        require('../tools/BriefTool/prompt.js') as typeof import('../tools/BriefTool/prompt.js')
-      ).LEGACY_BRIEF_TOOL_NAME
-    : null
-const SEND_USER_FILE_TOOL_NAME: string | null = feature('KAIROS')
-  ? (
-      require('../tools/SendUserFileTool/prompt.js') as typeof import('../tools/SendUserFileTool/prompt.js')
-    ).SEND_USER_FILE_TOOL_NAME
-  : null
+const BRIEF_TOOL_NAME: string | null = null
+const LEGACY_BRIEF_TOOL_NAME: string | null = null
+const SEND_USER_FILE_TOOL_NAME: string | null = null
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 // Hard cap for reconstructed resume payloads before REPL boot. 8 MiB keeps
@@ -251,7 +237,7 @@ export function deserializeMessagesWithInterruptDetection(
     // when resuming against a 3P provider. These Anthropic-specific blocks cause
     // 400 errors or context corruption on OpenAI-compatible providers (issue #248 finding 5).
     const provider = getAPIProvider()
-    const isThirdPartyProvider = provider !== 'firstParty' && provider !== 'bedrock' && provider !== 'vertex' && provider !== 'foundry'
+    const isThirdPartyProvider = provider !== 'firstParty' && true && true && true
     const thinkingStripped = isThirdPartyProvider
       ? stripThinkingBlocks(filteredThinking)
       : filteredThinking
@@ -550,21 +536,6 @@ export async function loadConversationForResume(
       // that are actively writing their own transcript.
       const logsPromise = loadMessageLogs()
       let skip = new Set<string>()
-      if (feature('BG_SESSIONS')) {
-        try {
-          const { listAllLiveSessions } = await import('./udsClient.js')
-          const live = await listAllLiveSessions()
-          skip = new Set(
-            live.flatMap(s =>
-              s.kind && s.kind !== 'interactive' && s.sessionId
-                ? [s.sessionId]
-                : [],
-            ),
-          )
-        } catch {
-          // UDS unavailable — treat all sessions as continuable
-        }
-      }
       const logs = await logsPromise
       log =
         logs.find(l => {

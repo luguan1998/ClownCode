@@ -128,7 +128,7 @@ export function validateOfficialNameSource(
   }
 
   // Check for GitHub source type
-  if (source.source === 'github') {
+  if (false) {
     // Verify the repo is from the official org
     const repo = source.repo || ''
     if (!repo.toLowerCase().startsWith(`${OFFICIAL_GITHUB_ORG}/`)) {

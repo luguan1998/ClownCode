@@ -2,7 +2,16 @@ import type { StdoutMessage } from 'src/entrypoints/sdk/controlTypes.js'
 import { PassThrough } from 'stream'
 import { URL } from 'url'
 import { getSessionId } from '../bootstrap/state.js'
-import { getPollIntervalConfig } from '../bridge/pollConfig.js'
+// Bridge poll-interval config is gone with the bridge feature; local defaults.
+const getPollIntervalConfig = (): {
+  pollIntervalMs: number
+  maxBackoffMs: number
+  session_keepalive_interval_v2_ms: number
+} => ({
+  pollIntervalMs: 1000,
+  maxBackoffMs: 30000,
+  session_keepalive_interval_v2_ms: 0,
+})
 import { registerCleanup } from '../utils/cleanupRegistry.js'
 import { setCommandLifecycleListener } from '../utils/commandLifecycle.js'
 import { isDebugMode, logForDebugging } from '../utils/debug.js'

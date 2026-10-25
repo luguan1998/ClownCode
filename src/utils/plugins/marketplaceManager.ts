@@ -1359,15 +1359,13 @@ async function cacheMarketplaceFromUrl(
  */
 function getCachePathForSource(source: MarketplaceSource): string {
   const tempName =
-    source.source === 'github'
-      ? source.repo.replace('/', '-')
-      : source.source === 'npm'
-        ? source.package.replace('@', '').replace('/', '-')
-        : source.source === 'file'
-          ? basename(source.path).replace('.json', '')
-          : source.source === 'directory'
-            ? basename(source.path)
-            : 'temp_' + Date.now()
+    source.source === 'npm'
+      ? source.package.replace('@', '').replace('/', '-')
+      : source.source === 'file'
+        ? basename(source.path).replace('.json', '')
+        : source.source === 'directory'
+          ? basename(source.path)
+          : 'temp_' + Date.now()
   return tempName
 }
 
@@ -1824,14 +1822,6 @@ export async function addMarketplaceSource(
       errorMessage += ' No external marketplaces are allowed.'
     }
 
-    // If source is a github shorthand and there are hostPatterns, suggest using full URL
-    if (resolvedSource.source === 'github' && hostPatterns.length > 0) {
-      errorMessage +=
-        `\n\nTip: The shorthand "${resolvedSource.repo}" assumes github.com. ` +
-        `For internal GitHub Enterprise, use the full URL:\n` +
-        `  git@your-github-host.com:${resolvedSource.repo}.git`
-    }
-
     throw new Error(errorMessage)
   }
 
@@ -2009,7 +1999,7 @@ export async function removeMarketplaceSource(name: string): Promise<void> {
 
       for (const pluginId in updatedPlugins) {
         if (pluginId.endsWith(marketplaceSuffix)) {
-          updatedPlugins[pluginId] = undefined
+          delete updatedPlugins[pluginId]
           removedPlugins = true
         }
       }
@@ -2465,78 +2455,26 @@ export async function refreshMarketplace(
       logForDebugging('Official marketplace GCS failed; falling back to git', {
         level: 'warn',
       })
-      // ...falls through to source.source === 'github' branch below
+      // ...falls through to false branch below
     }
 
     // Update based on source type
-    if (source.source === 'github' || source.source === 'git') {
-      // Git sources: do in-place git pull
-      if (source.source === 'github') {
-        // Same SSH/HTTPS fallback as loadAndCacheMarketplace: if the pull
-        // succeeds the remote URL in .git/config is used, but a re-clone
-        // needs a URL — pick the right protocol up-front and fall back.
-        const sshUrl = `git@github.com:${source.repo}.git`
-        const httpsUrl = `https://github.com/${source.repo}.git`
-
-        if (isEnvTruthy(process.env.CLAUDE_CODE_REMOTE)) {
-          // CCR: always HTTPS (no SSH keys available)
-          await cacheMarketplaceFromGit(
-            httpsUrl,
-            installLocation,
-            source.ref,
-            source.sparsePaths,
-            onProgress,
-            options,
-          )
-        } else {
-          const sshConfigured = await isGitHubSshLikelyConfigured()
-          const primaryUrl = sshConfigured ? sshUrl : httpsUrl
-          const fallbackUrl = sshConfigured ? httpsUrl : sshUrl
-
-          try {
-            await cacheMarketplaceFromGit(
-              primaryUrl,
-              installLocation,
-              source.ref,
-              source.sparsePaths,
-              onProgress,
-              options,
-            )
-          } catch {
-            logForDebugging(
-              `Marketplace refresh failed with ${sshConfigured ? 'SSH' : 'HTTPS'} for ${source.repo}, falling back to ${sshConfigured ? 'HTTPS' : 'SSH'}`,
-              { level: 'info' },
-            )
-            await cacheMarketplaceFromGit(
-              fallbackUrl,
-              installLocation,
-              source.ref,
-              source.sparsePaths,
-              onProgress,
-              options,
-            )
-          }
-        }
-      } else {
-        // Explicit git URL: use as-is (no fallback available)
-        await cacheMarketplaceFromGit(
-          source.url,
-          installLocation,
-          source.ref,
-          source.sparsePaths,
-          onProgress,
-          options,
-        )
-      }
+    if (source.source === 'git') {
+      // Git sources: do in-place git pull with the explicit remote URL.
+      await cacheMarketplaceFromGit(
+        source.url,
+        installLocation,
+        source.ref,
+        source.sparsePaths,
+        onProgress,
+        options,
+      )
       // Validate that marketplace.json still exists after update
       // The repo may have been restructured or deprecated
       try {
         await readCachedMarketplace(installLocation)
       } catch {
-        const sourceDisplay =
-          source.source === 'github'
-            ? source.repo
-            : redactUrlCredentials(source.url)
+        const sourceDisplay = redactUrlCredentials(source.url)
         const reason =
           name === 'claude-code-plugins'
             ? `We've deprecated "claude-code-plugins" in favor of "claude-plugins-official".`

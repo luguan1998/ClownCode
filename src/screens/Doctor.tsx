@@ -54,7 +54,7 @@ type VersionLockInfo = {
   locksDir: string;
   staleLocksCleaned: number;
 };
-function DistTagsDisplay(t0) {
+function DistTagsDisplay(t0: { promise: Promise<import('../utils/autoUpdater.js').NpmDistTags> }) {
   const $ = _c(8);
   const {
     promise
@@ -116,10 +116,22 @@ export function Doctor(t0) {
     t1 = $[1];
   }
   const tools = t1;
-  const [diagnostic, setDiagnostic] = useState(null);
-  const [agentInfo, setAgentInfo] = useState(null);
-  const [contextWarnings, setContextWarnings] = useState(null);
-  const [versionLockInfo, setVersionLockInfo] = useState(null);
+  const [diagnostic, setDiagnostic] = useState<import('../utils/doctorDiagnostic.js').DiagnosticInfo | null>(null);
+  const [agentInfo, setAgentInfo] = useState<{
+    activeAgents: string[];
+    userAgentsDir: string;
+    projectAgentsDir: string;
+    userDirExists: boolean;
+    projectDirExists: boolean;
+    failedFiles?: Array<{ path: string; error: string }>;
+  } | null>(null);
+  const [contextWarnings, setContextWarnings] = useState<import('../utils/doctorContextWarnings.js').ContextWarnings | null>(null);
+  const [versionLockInfo, setVersionLockInfo] = useState<{
+    enabled: boolean;
+    locks: ReturnType<typeof getAllLockInfo>;
+    locksDir: string;
+    staleLocksCleaned: number;
+  } | null>(null);
   const validationErrors = useSettingsErrors();
   let t2;
   if ($[2] === Symbol.for("react.memo_cache_sentinel")) {

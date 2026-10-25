@@ -20,6 +20,31 @@ import { errorMessage, getErrnoCode } from '../errors.js'
 
 type SafeString = AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
 
+// Node fs errno codes, used to distinguish filesystem failures from axios
+// network error codes (which are ERR_* prefixed and handled separately).
+const KNOWN_FS_CODES = new Set([
+  'EACCES',
+  'EBUSY',
+  'EDQUOT',
+  'EEXIST',
+  'EFAULT',
+  'EFBIG',
+  'EINVAL',
+  'EIO',
+  'EISDIR',
+  'ELOOP',
+  'EMFILE',
+  'ENAMETOOLONG',
+  'ENFILE',
+  'ENOENT',
+  'ENOSPC',
+  'ENOTDIR',
+  'ENOTEMPTY',
+  'EPERM',
+  'EROFS',
+  'EXDEV',
+])
+
 // CDN-fronted domain for the public GCS bucket (same bucket the native
 // binary ships from — nativeInstaller/download.ts:24 uses the raw GCS URL).
 // `{sha}.zip` is content-addressed so CDN can cache it indefinitely;

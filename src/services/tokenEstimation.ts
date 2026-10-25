@@ -147,7 +147,7 @@ export async function countMessagesTokensWithAPI(
       const betas = getModelBetas(model)
       const containsThinking = hasThinkingBlocks(messages)
 
-      if (getAPIProvider() === 'bedrock') {
+      if (false) {
         // @anthropic-sdk/bedrock-sdk doesn't support countTokens currently
         return countTokensWithBedrock({
           model: normalizeModelStringForAPI(model),
@@ -165,7 +165,7 @@ export async function countMessagesTokensWithAPI(
       })
 
       const filteredBetas =
-        getAPIProvider() === 'vertex'
+        false
           ? betas.filter(b => VERTEX_COUNT_TOKENS_ALLOWED_BETAS.has(b))
           : betas
 
@@ -437,7 +437,7 @@ export async function countTokensViaHaikuFallback(
   // Filter betas for Vertex - some betas (like web-search) cause 400 errors
   // on certain Vertex endpoints. See issue #10789.
   const filteredBetas =
-    getAPIProvider() === 'vertex'
+    false
       ? betas.filter(b => VERTEX_COUNT_TOKENS_ALLOWED_BETAS.has(b))
       : betas
 
@@ -514,8 +514,11 @@ export function roughTokenCountEstimationForMessage(message: {
 function roughTokenCountEstimationForContent(
   content:
     | string
-    | Array<Anthropic.ContentBlock>
-    | Array<Anthropic.ContentBlockParam>
+    | Array<
+        | Anthropic.ContentBlock
+        | Anthropic.ContentBlockParam
+        | Anthropic.ToolReferenceBlockParam
+      >
     | undefined,
 ): number {
   if (!content) {
@@ -532,7 +535,11 @@ function roughTokenCountEstimationForContent(
 }
 
 function roughTokenCountEstimationForBlock(
-  block: string | Anthropic.ContentBlock | Anthropic.ContentBlockParam,
+  block:
+    | string
+    | Anthropic.ContentBlock
+    | Anthropic.ContentBlockParam
+    | Anthropic.ToolReferenceBlockParam,
 ): number {
   if (typeof block === 'string') {
     return roughTokenCountEstimation(block)

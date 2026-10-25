@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import { APIError } from '@anthropic-ai/sdk'
 import type {
   BetaStopReason,
@@ -197,7 +196,7 @@ export function logAPIQuery({
     model: model as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     messagesLength,
     temperature: temperature,
-    provider: getAPIProviderForStatsig(),
+    provider: getAPIProviderForStatsig() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     buildAgeMins: getBuildAgeMinutes(),
     ...(betas?.length
       ? {
@@ -313,7 +312,7 @@ export function logAPIError({
     durationMs,
     durationMsIncludingRetries,
     attempt,
-    provider: getAPIProviderForStatsig(),
+    provider: getAPIProviderForStatsig() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     requestId:
       (requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ||
       undefined,
@@ -486,7 +485,7 @@ function logAPISuccess({
     attempt: attempt,
     ttftMs: ttftMs ?? undefined,
     buildAgeMins: getBuildAgeMinutes(),
-    provider: getAPIProviderForStatsig(),
+    provider: getAPIProviderForStatsig() as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
     requestId:
       (requestId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS) ??
       undefined,
@@ -555,7 +554,7 @@ function logAPISuccess({
     // Log cache_deleted_input_tokens for cache editing analysis. Casts needed
     // because the field is intentionally not on NonNullableUsage (excluded from
     // external builds). Set by updateUsage() when cache editing is active.
-    ...(feature('CACHED_MICROCOMPACT') &&
+    ...(true &&
     ((usage as unknown as { cache_deleted_input_tokens?: number })
       .cache_deleted_input_tokens ?? 0) > 0
       ? {
@@ -659,7 +658,7 @@ export function logAPISuccessAndDuration({
       for (const block of msg.message.content) {
         if (block.type === 'text') {
           textLen += block.text.length
-        } else if (feature('CONNECTOR_TEXT') && isConnectorTextBlock(block)) {
+        } else if (false && isConnectorTextBlock(block)) {
           connectorCount++
         } else if (block.type === 'thinking') {
           thinkingLen += block.thinking.length

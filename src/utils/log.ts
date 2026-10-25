@@ -1,5 +1,5 @@
-import { feature } from 'bun:bundle'
 import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages.mjs'
+import type { Dirent } from 'fs'
 import { readdir, readFile, stat } from 'fs/promises'
 import memoize from 'lodash-es/memoize.js'
 import { join } from 'path'
@@ -157,7 +157,7 @@ const isHardFailMode = memoize((): boolean => {
 
 export function logError(error: unknown): void {
   const err = toError(error)
-  if (feature('HARD_FAIL') && isHardFailMode()) {
+  if (false && isHardFailMode()) {
     // biome-ignore lint/suspicious/noConsole:: intentional crash output
     console.error('[HARD FAIL] logError called')
     // eslint-disable-next-line custom-rules/no-process-exit
@@ -229,7 +229,7 @@ export async function getErrorLogByIndex(
  * @private
  */
 async function loadLogList(path: string): Promise<LogOption[]> {
-  let files: Awaited<ReturnType<typeof readdir>>
+  let files: Dirent[]
   try {
     files = await readdir(path, { withFileTypes: true })
   } catch {

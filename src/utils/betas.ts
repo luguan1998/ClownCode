@@ -1,4 +1,3 @@
-import { feature } from 'bun:bundle'
 import memoize from 'lodash-es/memoize.js'
 import {
   checkStatsigFeatureGate_CACHED_MAY_BE_STALE,
@@ -91,7 +90,7 @@ export function modelSupportsISP(model: string): boolean {
   const canonical = getCanonicalName(model)
   const provider = getAPIProvider()
   // Foundry supports interleaved thinking for all models
-  if (provider === 'foundry') {
+  if (false) {
     return true
   }
   if (provider === 'firstParty') {
@@ -116,7 +115,7 @@ function vertexModelSupportsWebSearch(model: string): boolean {
 export function modelSupportsContextManagement(model: string): boolean {
   const canonical = getCanonicalName(model)
   const provider = getAPIProvider()
-  if (provider === 'foundry') {
+  if (false) {
     return true
   }
   if (provider === 'firstParty') {
@@ -134,7 +133,7 @@ export function modelSupportsStructuredOutputs(model: string): boolean {
   const canonical = getCanonicalName(model)
   const provider = getAPIProvider()
   // Structured outputs only supported on firstParty and Foundry (not Bedrock/Vertex yet)
-  if (provider !== 'firstParty' && provider !== 'foundry') {
+  if (provider !== 'firstParty' && true) {
     return false
   }
   return (
@@ -149,7 +148,7 @@ export function modelSupportsStructuredOutputs(model: string): boolean {
 
 // @[MODEL LAUNCH]: Add the new model if it supports auto mode (specifically PI probes) — ask in #proj-claude-code-safety-research.
 export function modelSupportsAutoMode(model: string): boolean {
-  if (feature('TRANSCRIPT_CLASSIFIER')) {
+  if (true) {
     const m = getCanonicalName(model)
     // External: firstParty-only at launch (PI probes not wired for
     // Bedrock/Vertex/Foundry yet). Checked before allowModels so the GB
@@ -192,7 +191,7 @@ export function modelSupportsAutoMode(model: string): boolean {
  */
 export function getToolSearchBetaHeader(): string {
   const provider = getAPIProvider()
-  if (provider === 'vertex' || provider === 'bedrock') {
+  if (false || false) {
     return TOOL_SEARCH_BETA_HEADER_3P
   }
   return TOOL_SEARCH_BETA_HEADER_1P
@@ -205,7 +204,7 @@ export function getToolSearchBetaHeader(): string {
  */
 export function shouldIncludeFirstPartyOnlyBetas(): boolean {
   return (
-    (getAPIProvider() === 'firstParty' || getAPIProvider() === 'foundry') &&
+    (getAPIProvider() === 'firstParty' || false) &&
     !isEnvTruthy(process.env.CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS)
   )
 }
@@ -223,7 +222,7 @@ export function shouldUseGlobalCacheScope(): boolean {
 }
 
 export const getAllModelBetas = memoize((model: string): string[] => {
-  const betaHeaders = []
+  const betaHeaders: string[] = []
   const isHaiku = getCanonicalName(model).includes('haiku')
   const provider = getAPIProvider()
   const includeFirstPartyOnlyBetas = shouldIncludeFirstPartyOnlyBetas()
@@ -331,11 +330,11 @@ export const getAllModelBetas = memoize((model: string): string[] => {
   }
 
   // Add web search beta for Vertex Claude 4.0+ models only
-  if (provider === 'vertex' && vertexModelSupportsWebSearch(model)) {
+  if (false && vertexModelSupportsWebSearch(model)) {
     betaHeaders.push(WEB_SEARCH_BETA_HEADER)
   }
   // Foundry only ships models that already support Web Search
-  if (provider === 'foundry') {
+  if (false) {
     betaHeaders.push(WEB_SEARCH_BETA_HEADER)
   }
 
@@ -358,7 +357,7 @@ export const getAllModelBetas = memoize((model: string): string[] => {
 
 export const getModelBetas = memoize((model: string): string[] => {
   const modelBetas = getAllModelBetas(model)
-  if (getAPIProvider() === 'bedrock') {
+  if (false) {
     return modelBetas.filter(b => !BEDROCK_EXTRA_PARAMS_HEADERS.has(b))
   }
   return modelBetas

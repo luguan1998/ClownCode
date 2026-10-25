@@ -1,9 +1,8 @@
 import { c as _c } from "react-compiler-runtime";
 // biome-ignore-all assist/source/organizeImports: internal-only import markers must not be reordered
-import { feature } from 'bun:bundle';
 // Dead code elimination: conditional import for COORDINATOR_MODE
 /* eslint-disable @typescript-eslint/no-require-imports */
-const coordinatorModule = feature('COORDINATOR_MODE') ? require('../../coordinator/coordinatorMode.js') as typeof import('../../coordinator/coordinatorMode.js') : undefined;
+const coordinatorModule = true ? require('../../coordinator/coordinatorMode.js') as typeof import('../../coordinator/coordinatorMode.js') : undefined;
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { Box, Text, Link } from '../../ink.js';
 import * as React from 'react';
@@ -32,7 +31,6 @@ import { Byline } from '../design-system/Byline.js';
 import { useTerminalSize } from '../../hooks/useTerminalSize.js';
 import { useTasksV2 } from '../../hooks/useTasksV2.js';
 import { formatDuration } from '../../utils/format.js';
-import { VoiceWarmupHint } from './VoiceIndicator.js';
 import { useVoiceEnabled } from '../../hooks/useVoiceEnabled.js';
 import { useVoiceState } from '../../context/voice.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
@@ -44,7 +42,7 @@ import { PrBadge } from '../PrBadge.js';
 
 // Dead code elimination: conditional import for proactive mode
 /* eslint-disable @typescript-eslint/no-require-imports */
-const proactiveModule = feature('PROACTIVE') || feature('KAIROS') ? require('../../proactive/index.js') : null;
+const proactiveModule = false || false ? require('../../proactive/index.js') : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
 const NO_OP_SUBSCRIBE = (_cb: () => void) => () => {};
 const NULL = () => null;
@@ -74,7 +72,7 @@ type Props = {
 function ProactiveCountdown() {
   const $ = _c(7);
   const nextTickAt = useSyncExternalStore(proactiveModule?.subscribeToProactiveChanges ?? NO_OP_SUBSCRIBE, proactiveModule?.getNextTickAt ?? NULL, NULL);
-  const [remainingSeconds, setRemainingSeconds] = useState(null);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   let t0;
   let t1;
   if ($[0] !== nextTickAt) {
@@ -260,54 +258,18 @@ function ModeIndicator({
   const expandedView = useAppState(s_3 => s_3.expandedView);
   const showSpinnerTree = expandedView === 'teammates';
   const prStatus = usePrStatus(isLoading, isPrStatusEnabled());
-  const hasTmuxSession = useAppState(s_4 => "external" === 'ant' && s_4.tungstenActiveSession !== undefined);
   const nextTickAt = useSyncExternalStore(proactiveModule?.subscribeToProactiveChanges ?? NO_OP_SUBSCRIBE, proactiveModule?.getNextTickAt ?? NULL, NULL);
   // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  const voiceEnabled = feature('VOICE_MODE') ? useVoiceEnabled() : false;
-  const voiceState = feature('VOICE_MODE') ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useVoiceState(s_5 => s_5.voiceState) : 'idle' as const;
-  const voiceWarmingUp = feature('VOICE_MODE') ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useVoiceState(s_6 => s_6.voiceWarmingUp) : false;
   const hasSelection = useHasSelection();
   const selGetState = useSelection().getState;
   const hasNextTick = nextTickAt !== null;
-  const isCoordinator = feature('COORDINATOR_MODE') ? coordinatorModule?.isCoordinatorMode() === true : false;
-  const runningTaskCount = useMemo(() => count(Object.values(tasks), t => isBackgroundTask(t) && !("external" === 'ant' && isPanelAgentTask(t))), [tasks]);
+  const isCoordinator = true ? coordinatorModule?.isCoordinatorMode() === true : false;
+  const runningTaskCount = useMemo(() => count(Object.values(tasks), t => isBackgroundTask(t) && !(false && isPanelAgentTask(t))), [tasks]);
   const tasksV2 = useTasksV2();
   const hasTaskItems = tasksV2 !== undefined && tasksV2.length > 0;
   const escShortcut = useShortcutDisplay('chat:cancel', 'Chat', 'esc').toLowerCase();
   const todosShortcut = useShortcutDisplay('app:toggleTodos', 'Global', 'ctrl+t');
   const killAgentsShortcut = useShortcutDisplay('chat:killAgents', 'Chat', 'ctrl+x ctrl+k');
-  const voiceKeyShortcut = feature('VOICE_MODE') ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useShortcutDisplay('voice:pushToTalk', 'Chat', 'Space') : '';
-  // Captured at mount so the hint doesn't flicker mid-session if another
-  // CC instance increments the counter. Incremented once via useEffect the
-  // first time voice is enabled in this session — approximates "hint was
-  // shown" without tracking the exact render-time condition (which depends
-  // on parts/hintParts computed after the early-return hooks boundary).
-  const [voiceHintUnderCap] = feature('VOICE_MODE') ?
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  useState(() => (getGlobalConfig().voiceFooterHintSeenCount ?? 0) < MAX_VOICE_HINT_SHOWS) : [false];
-  // biome-ignore lint/correctness/useHookAtTopLevel: feature() is a compile-time constant
-  const voiceHintIncrementedRef = feature('VOICE_MODE') ? useRef(false) : null;
-  useEffect(() => {
-    if (feature('VOICE_MODE')) {
-      if (!voiceEnabled || !voiceHintUnderCap) return;
-      if (voiceHintIncrementedRef?.current) return;
-      if (voiceHintIncrementedRef) voiceHintIncrementedRef.current = true;
-      const newCount = (getGlobalConfig().voiceFooterHintSeenCount ?? 0) + 1;
-      saveGlobalConfig(prev => {
-        if ((prev.voiceFooterHintSeenCount ?? 0) >= newCount) return prev;
-        return {
-          ...prev,
-          voiceFooterHintSeenCount: newCount
-        };
-      });
-    }
-  }, [voiceEnabled, voiceHintUnderCap]);
   const isKillAgentsConfirmShowing = useAppState(s_7 => s_7.notifications.current?.key === 'kill-agents-confirm');
 
   // Derive team info from teamContext (no filesystem I/O needed)
@@ -365,7 +327,7 @@ function ModeIndicator({
   // its click-target Box isn't nested inside the <Text wrap="truncate">
   // wrapper (reconciler throws on Box-in-Text).
   // Tmux pill (internal-only) — appears right after tasks in nav order
-  ...("external" === 'ant' && hasTmuxSession ? [<TungstenPill key="tmux" selected={tmuxSelected} />] : []), ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
+  ...(isAgentSwarmsEnabled() && hasTeams ? [<TeamStatus key="teams" teamsSelected={teamsSelected} showHint={showHint && !hasBackgroundTasks} />] : []), ...(shouldShowPrStatus ? [<PrBadge key="pr-status" number={prStatus.number!} url={prStatus.url!} reviewState={prStatus.reviewState!} />] : [])];
 
   // Check if any in-process teammates exist (for hint text cycling)
   const hasAnyInProcessTeammates = Object.values(tasks).some(t_2 => t_2.type === 'in_process_teammate' && t_2.status === 'running');
@@ -377,7 +339,7 @@ function ModeIndicator({
     parts.push(<Text dimColor key="esc-return">
         <KeyboardShortcutHint shortcut={escShortcut} action="return to team lead" />
       </Text>);
-  } else if ((feature('PROACTIVE') || feature('KAIROS')) && hasNextTick) {
+  } else if ((false || false) && hasNextTick) {
     parts.push(<ProactiveCountdown key="proactive" />);
   } else if (!hasTeammatePills && showHint) {
     parts.push(...hintParts);
@@ -399,7 +361,7 @@ function ModeIndicator({
   }
 
   // Add "↓ to manage tasks" hint when panel has visible rows
-  const hasCoordinatorTasks = "external" === 'ant' && getVisibleAgentTasks(tasks).length > 0;
+  const hasCoordinatorTasks = false && getVisibleAgentTasks(tasks).length > 0;
 
   // Tasks pill renders as a Box sibling (not a parts entry) so its
   // click-target Box isn't nested inside <Text wrap="truncate"> — the
@@ -421,9 +383,7 @@ function ModeIndicator({
 
   // Warmup hint takes priority — when the user is actively holding
   // the activation key, show feedback regardless of other hints.
-  if (feature('VOICE_MODE') && voiceEnabled && voiceWarmingUp) {
-    parts.push(<VoiceWarmupHint key="voice-warmup" />);
-  } else if (isFullscreenEnvEnabled() && selectionHintHasContent) {
+  if (isFullscreenEnvEnabled() && selectionHintHasContent) {
     // xterm.js (VS Code/Cursor/Windsurf) force-selection modifier is
     // platform-specific and gated on macOS (SelectionService.shouldForceSelection):
     //   macOS:     altKey && macOptionClickForcesSelection (VS Code default: false)
@@ -441,10 +401,6 @@ function ModeIndicator({
           {!copyOnSelect && <KeyboardShortcutHint shortcut="ctrl+c" action="copy" />}
           {isXtermJs() && (altClickFailed ? <Text>set macOptionClickForcesSelection in VS Code settings</Text> : <KeyboardShortcutHint shortcut={isMac ? 'option+click' : 'shift+click'} action="native select" />)}
         </Byline>
-      </Text>);
-  } else if (feature('VOICE_MODE') && parts.length > 0 && showHint && voiceEnabled && voiceState === 'idle' && hintParts.length === 0 && voiceHintUnderCap) {
-    parts.push(<Text dimColor key="voice-hint">
-        hold {voiceKeyShortcut} to speak
       </Text>);
   }
   if ((tasksPart || hasCoordinatorTasks) && showHint && !hasTeams) {

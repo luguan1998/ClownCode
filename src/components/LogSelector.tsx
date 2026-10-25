@@ -81,6 +81,15 @@ type Snippet = {
   match: string;
   after: string;
 };
+type DeepSearchResult = {
+  log: LogOption;
+  score: number;
+  searchableText?: string;
+};
+type DeepSearchState = {
+  results: DeepSearchResult[];
+  query: string;
+};
 function formatSnippet({
   before,
   match,
@@ -190,7 +199,7 @@ export function LogSelector(t0) {
   }
   const highlightColor = t5;
   const isAgenticSearchEnabled = false;
-  const [currentBranch, setCurrentBranch] = React.useState(null);
+  const [currentBranch, setCurrentBranch] = React.useState<string | null>(null);
   const [branchFilterEnabled, setBranchFilterEnabled] = React.useState(false);
   const [showAllWorktrees, setShowAllWorktrees] = React.useState(false);
   const [hasMultipleWorktrees, setHasMultipleWorktrees] = React.useState(false);
@@ -204,7 +213,7 @@ export function LogSelector(t0) {
   const currentCwd = t6;
   const [renameValue, setRenameValue] = React.useState("");
   const [renameCursorOffset, setRenameCursorOffset] = React.useState(0);
-  let t7;
+  let t7: Set<string>;
   if ($[6] === Symbol.for("react.memo_cache_sentinel")) {
     t7 = new Set();
     $[6] = t7;
@@ -212,11 +221,11 @@ export function LogSelector(t0) {
     t7 = $[6];
   }
   const [expandedGroupSessionIds, setExpandedGroupSessionIds] = React.useState(t7);
-  const [focusedNode, setFocusedNode] = React.useState(null);
+  const [focusedNode, setFocusedNode] = React.useState<LogTreeNode | null>(null);
   const [focusedIndex, setFocusedIndex] = React.useState(1);
   const [viewMode, setViewMode] = React.useState("list");
-  const [previewLog, setPreviewLog] = React.useState(null);
-  const prevFocusedIdRef = React.useRef(null);
+  const [previewLog, setPreviewLog] = React.useState<LogOption | null>(null);
+  const prevFocusedIdRef = React.useRef<string | null>(null);
   const [selectedTagIndex, setSelectedTagIndex] = React.useState(0);
   let t8;
   if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
@@ -229,7 +238,7 @@ export function LogSelector(t0) {
   }
   const [agenticSearchState, setAgenticSearchState] = React.useState(t8);
   const [isAgenticSearchOptionFocused, setIsAgenticSearchOptionFocused] = React.useState(false);
-  const agenticSearchAbortRef = React.useRef(null);
+  const agenticSearchAbortRef = React.useRef<AbortController | null>(null);
   const t9 = viewMode === "search" && agenticSearchState.status !== "searching";
   let t10;
   let t11;
@@ -299,7 +308,7 @@ export function LogSelector(t0) {
     t16 = $[16];
   }
   React.useEffect(t15, t16);
-  const [deepSearchResults, setDeepSearchResults] = React.useState(null);
+  const [deepSearchResults, setDeepSearchResults] = React.useState<DeepSearchState | null>(null);
   const [isSearching, setIsSearching] = React.useState(false);
   let t17;
   let t18;
@@ -789,46 +798,10 @@ export function LogSelector(t0) {
   let t35;
   if ($[94] !== logs || $[95] !== onAgenticSearch || $[96] !== searchQuery) {
     t35 = async () => {
-      if (!searchQuery.trim() || !onAgenticSearch || true) {
-        return;
-      }
-      agenticSearchAbortRef.current?.abort();
-      const abortController = new AbortController();
-      agenticSearchAbortRef.current = abortController;
-      setAgenticSearchState({
-        status: "searching"
-      });
-      logEvent("tengu_agentic_search_started", {
-        query_length: searchQuery.length
-      });
-      ;
-      try {
-        const results_0 = await onAgenticSearch(searchQuery, logs, abortController.signal);
-        if (abortController.signal.aborted) {
-          return;
-        }
-        setAgenticSearchState({
-          status: "results",
-          results: results_0,
-          query: searchQuery
-        });
-        logEvent("tengu_agentic_search_completed", {
-          query_length: searchQuery.length,
-          results_count: results_0.length
-        });
-      } catch (t36) {
-        const error = t36;
-        if (abortController.signal.aborted) {
-          return;
-        }
-        setAgenticSearchState({
-          status: "error",
-          message: error instanceof Error ? error.message : "Search failed"
-        });
-        logEvent("tengu_agentic_search_error", {
-          query_length: searchQuery.length
-        });
-      }
+      // Agentic session search is switched off in this build — the original
+      // guard returned on every call, so none of the search/abort/state code
+      // below it ever ran.
+      return;
     };
     $[94] = logs;
     $[95] = onAgenticSearch;

@@ -1,0 +1,15 @@
+Auto mode permission defaults (internal build):
+
+Same baseline as the external template, plus:
+
+APPROVED additionally:
+  Internal CI and review tooling (internal CLI aliases), gh pr view/status/checks
+  Internal artifact queries and log tailing from approved internal hosts
+
+REJECTED additionally:
+  Any command targeting production infrastructure, even via internal tooling
+  Internal deployment or release commands (deploys are never auto-approved)
+
+Rules mirror the external template: project-scoped reversible operations are
+approved; everything destructive, irreversible, or leaving the machine/network
+boundary is rejected.

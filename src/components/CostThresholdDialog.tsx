@@ -13,16 +13,8 @@ function getProviderLabel(): string {
   switch (provider) {
     case 'firstParty':
       return 'Anthropic API'
-    case 'bedrock':
-      return 'AWS Bedrock'
-    case 'vertex':
-      return 'Google Vertex'
-    case 'foundry':
-      return 'Azure Foundry'
     case 'openai':
       return 'OpenAI-compatible API'
-    case 'gemini':
-      return 'Gemini API'
     default:
       return 'API'
   }

@@ -211,8 +211,13 @@ function getConfigSignature(config: ScopedMcpServerConfig): string {
       return `${config.scope}:${config.type}:${config.url}`
     case 'sdk':
       return `${config.scope}:${config.type}:${config.name}`
-    default:
-      return `${config.scope}:${config.type ?? 'stdio'}:${config.command}:${JSON.stringify(config.args ?? [])}`
+    default: {
+      // stdio carries command/args; the other unlisted transport (sse-ide) has
+      // neither, so both resolve to the same `undefined` slots as before.
+      const command = 'command' in config ? config.command : undefined
+      const args = 'args' in config ? config.args : undefined
+      return `${config.scope}:${config.type ?? 'stdio'}:${command}:${JSON.stringify(args ?? [])}`
+    }
   }
 }
 

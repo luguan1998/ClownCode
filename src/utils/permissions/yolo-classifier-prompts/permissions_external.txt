@@ -1,0 +1,26 @@
+Auto mode permission defaults (external build):
+
+APPROVED command prefixes:
+  git status, git log, git diff, git show, git branch
+  ls, cat, head, tail, wc, find, grep, rg, fd, tree, file, stat
+  node --version, npm --version, bun --version, python --version
+  npm test, npm run, npx (project-local), yarn, pnpm, bun test, bun run
+  pytest, python -m pytest, make, tsc, eslint, prettier, biome
+  mkdir, touch (inside project), cp (inside project), mv (inside project)
+
+REJECTED command prefixes:
+  sudo, su, chmod, chown (outside project)
+  rm -rf (outside project), shred, mkfs, format
+  git push --force, git push -f, git reset --hard (with remote refs)
+  npm install -g, pip install --user, pip install (non-project), gem install
+  curl, wget (writing to disk or piping to shell)
+  ssh, scp, rsync (remote), nc, netcat
+  systemctl, service, launchctl, kill (other users' processes)
+  docker system prune, docker rm, kubectl delete
+
+Rules:
+  1. Paths inside the current working directory are low risk.
+  2. Anything touching files outside the working directory must be rejected.
+  3. Network calls to hosts other than the configured intranet endpoint must be rejected.
+  4. Irreversible operations (force push, hard delete, format) must be rejected.
+  5. When a command mixes approved and rejected parts, reject the whole command.

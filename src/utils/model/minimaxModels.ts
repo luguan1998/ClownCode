@@ -4,7 +4,6 @@
  */
 
 import type { ModelOption } from './modelOptions.js'
-import { getAPIProvider } from './providers.js'
 import { isEnvTruthy } from '../envUtils.js'
 
 export function isMiniMaxProvider(): boolean {
@@ -12,10 +11,7 @@ export function isMiniMaxProvider(): boolean {
     return true
   }
   const baseUrl = process.env.OPENAI_BASE_URL ?? ''
-  if (baseUrl.includes('minimax')) {
-    return true
-  }
-  return getAPIProvider() === 'minimax'
+  return baseUrl.includes('minimax')
 }
 
 function getMiniMaxModels(): ModelOption[] {

@@ -549,6 +549,57 @@ export const SDKControlElicitationResponseSchema = lazySchema(() =>
 // Control Request/Response Wrappers
 // ============================================================================
 
+export const SDKControlEndSessionRequestSchema = lazySchema(() =>
+  z.object({
+    subtype: z.literal('end_session'),
+    reason: z.string().optional(),
+  }),
+)
+
+export const SDKControlChannelEnableRequestSchema = lazySchema(() =>
+  z.object({
+    subtype: z.literal('channel_enable'),
+    serverName: z.string(),
+  }),
+)
+
+export const SDKControlMcpAuthenticateRequestSchema = lazySchema(() =>
+  z.object({
+    subtype: z.literal('mcp_authenticate'),
+    serverName: z.string(),
+  }),
+)
+
+export const SDKControlMcpOauthCallbackUrlRequestSchema = lazySchema(() =>
+  z.object({
+    subtype: z.literal('mcp_oauth_callback_url'),
+    serverName: z.string(),
+    callbackUrl: z.string(),
+  }),
+)
+
+export const SDKControlMcpClearAuthRequestSchema = lazySchema(() =>
+  z.object({
+    subtype: z.literal('mcp_clear_auth'),
+    serverName: z.string(),
+  }),
+)
+
+export const SDKControlGenerateSessionTitleRequestSchema = lazySchema(() =>
+  z.object({
+    subtype: z.literal('generate_session_title'),
+    description: z.string(),
+    persist: z.boolean().optional(),
+  }),
+)
+
+export const SDKControlSideQuestionRequestSchema = lazySchema(() =>
+  z.object({
+    subtype: z.literal('side_question'),
+    question: z.string(),
+  }),
+)
+
 export const SDKControlRequestInnerSchema = lazySchema(() =>
   z.union([
     SDKControlInterruptRequestSchema(),
@@ -572,6 +623,13 @@ export const SDKControlRequestInnerSchema = lazySchema(() =>
     SDKControlApplyFlagSettingsRequestSchema(),
     SDKControlGetSettingsRequestSchema(),
     SDKControlElicitationRequestSchema(),
+    SDKControlEndSessionRequestSchema(),
+    SDKControlChannelEnableRequestSchema(),
+    SDKControlMcpAuthenticateRequestSchema(),
+    SDKControlMcpOauthCallbackUrlRequestSchema(),
+    SDKControlMcpClearAuthRequestSchema(),
+    SDKControlGenerateSessionTitleRequestSchema(),
+    SDKControlSideQuestionRequestSchema(),
   ]),
 )
 

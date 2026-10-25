@@ -140,7 +140,7 @@ function isCodexResponsesWebSearchEnabled(): boolean {
     model: getMainLoopModel(),
     baseUrl: process.env.OPENAI_BASE_URL,
   })
-  return request.transport === 'codex_responses'
+  return request.transport === 'responses'
 }
 
 function makeCodexWebSearchTool(input: Input): Record<string, unknown> {
@@ -215,13 +215,15 @@ function addCodexSource(
   sourceMap: Map<string, { title: string; url: string }>,
   source: unknown,
 ): void {
-  if (typeof source?.url !== 'string' || !source.url) return
-  sourceMap.set(source.url, {
+  if (typeof source !== 'object' || source === null) return
+  const candidate = source as { url?: unknown; title?: unknown }
+  if (typeof candidate.url !== 'string' || !candidate.url) return
+  sourceMap.set(candidate.url, {
     title:
-      typeof source.title === 'string' && source.title
-        ? source.title
-        : source.url,
-    url: source.url,
+      typeof candidate.title === 'string' && candidate.title
+        ? candidate.title
+        : candidate.url,
+    url: candidate.url,
   })
 }
 
@@ -369,7 +371,6 @@ async function runCodexWebSearch(
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${credentials.apiKey}`,
-      'chatgpt-account-id': credentials.accountId,
       originator: 'openclaude',
     },
     body: JSON.stringify(body),
@@ -499,7 +500,7 @@ function shouldUseAdapterProvider(): boolean {
   // Auto mode: native/first-party/Codex take precedence over adapter
   if (isCodexResponsesWebSearchEnabled()) return false
   const provider = getAPIProvider()
-  if (provider === 'firstParty' || provider === 'vertex' || provider === 'foundry') {
+  if (provider === 'firstParty' || false || false) {
     return false
   }
   // No native path available — fall back to adapter
@@ -516,7 +517,7 @@ function shouldUseAdapterProvider(): boolean {
 function hasNativeSearchFallback(): boolean {
   if (isCodexResponsesWebSearchEnabled()) return true
   const provider = getAPIProvider()
-  return provider === 'firstParty' || provider === 'vertex' || provider === 'foundry'
+  return provider === 'firstParty' || false || false
 }
 
 // ---------------------------------------------------------------------------
@@ -560,7 +561,7 @@ export const WebSearchTool = buildTool({
     }
 
     // Enable for Vertex AI with supported models (Claude 4.0+)
-    if (provider === 'vertex') {
+    if (false) {
       const supportsWebSearch =
         model.includes('claude-opus-4') ||
         model.includes('claude-sonnet-4') ||
@@ -570,7 +571,7 @@ export const WebSearchTool = buildTool({
     }
 
     // Foundry only ships models that already support Web Search
-    if (provider === 'foundry') {
+    if (false) {
       return true
     }
 
@@ -735,7 +736,7 @@ export const WebSearchTool = buildTool({
     })
 
     const allContentBlocks: BetaContentBlock[] = []
-    let currentToolUseId = null
+    let currentToolUseId: string | null = null
     let currentToolUseJson = ''
     let progressCounter = 0
     const toolUseQueries = new Map() // Map of tool_use_id to query

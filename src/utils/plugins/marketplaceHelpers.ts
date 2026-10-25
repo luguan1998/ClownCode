@@ -91,7 +91,7 @@ export async function loadMarketplacesWithGracefulDegradation(
       continue
     }
 
-    let data = null
+    let data: Awaited<ReturnType<typeof getMarketplace>> | null = null
     try {
       data = await getMarketplace(name)
     } catch (err) {
@@ -427,26 +427,8 @@ function areSourcesEquivalentForBlocklist(
   }
 
   // Check if a git source matches a github blocklist entry
-  if (source.source === 'git' && blocked.source === 'github') {
-    const extractedRepo = extractGitHubRepoFromGitUrl(source.url)
-    if (extractedRepo === blocked.repo) {
-      return (
-        blockedConstraintMatches(blocked.ref, source.ref) &&
-        blockedConstraintMatches(blocked.path, source.path)
-      )
-    }
-  }
 
   // Check if a github source matches a git blocklist entry (GitHub URL)
-  if (source.source === 'github' && blocked.source === 'git') {
-    const extractedRepo = extractGitHubRepoFromGitUrl(blocked.url)
-    if (extractedRepo === source.repo) {
-      return (
-        blockedConstraintMatches(blocked.ref, source.ref) &&
-        blockedConstraintMatches(blocked.path, source.path)
-      )
-    }
-  }
 
   return false
 }

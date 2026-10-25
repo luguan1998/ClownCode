@@ -89,7 +89,7 @@ function groupServersByScope(serverList: ServerInfo[]): Map<ConfigScope, ServerI
   }
   return groups;
 }
-export function MCPListPanel(t0) {
+export function MCPListPanel(t0: Props) {
   const $ = _c(78);
   const {
     servers,
@@ -98,7 +98,7 @@ export function MCPListPanel(t0) {
     onSelectAgentServer,
     onComplete
   } = t0;
-  let t2;
+  let t2: AgentMcpServerInfo[];
   if ($[0] !== t1) {
     t2 = t1 === undefined ? [] : t1;
     $[0] = t1;
@@ -483,7 +483,7 @@ export function MCPListPanel(t0) {
   }
   return t32;
 }
-function _temp6(s_2) {
+function _temp6(s_2: AgentMcpServerInfo): string[] {
   return s_2.sourceAgents;
 }
 function _temp5(s_1) {

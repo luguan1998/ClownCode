@@ -1037,7 +1037,9 @@ class Project {
 
         const transcriptMessage: TranscriptMessage = {
           parentUuid: isCompactBoundary ? null : effectiveParentUuid,
-          logicalParentUuid: isCompactBoundary ? parentUuid : undefined,
+          logicalParentUuid: isCompactBoundary
+            ? (parentUuid ?? undefined)
+            : undefined,
           isSidechain,
           teamName: teamInfo?.teamName,
           agentName: teamInfo?.agentName,
@@ -1053,7 +1055,7 @@ class Project {
           // stamped sessionId=FRESH (from insertContentReplacement), and
           // loadFullLog's sessionId-keyed contentReplacements lookup misses →
           // replacement records lost → FROZEN misclassification.
-          userType: getUserType(),
+          userType: getUserType() as 'external' | 'internal',
           entrypoint: getEntrypoint(),
           cwd: getCwd(),
           sessionId,
@@ -1923,7 +1925,8 @@ function applyPreservedSegmentRelinks(
         tailIndex: entryIndex.get(lastSeg.tailUuid),
         headIndex: entryIndex.get(lastSeg.headUuid),
         anchorIndex: entryIndex.get(lastSeg.anchorUuid),
-        lastSeenType,
+        lastSeenType:
+          lastSeenType as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
         breakParentInTranscript: Boolean(
           breakParentUuid && messages.has(breakParentUuid),
         ),
@@ -4100,10 +4103,10 @@ export function clearSessionMessagesCache(): void {
  */
 export async function doesMessageExistInSession(
   sessionId: UUID,
-  messageUuid: UUID,
+  messageUuid: string,
 ): Promise<boolean> {
   const messageSet = await getSessionMessages(sessionId)
-  return messageSet.has(messageUuid)
+  return messageSet.has(messageUuid as UUID)
 }
 
 export async function getLastSessionLog(
@@ -4722,7 +4725,7 @@ export async function findUnresolvedToolUse(
     const transcriptPath = getTranscriptPath()
     const { messages } = await loadTranscriptFile(transcriptPath)
 
-    let toolUseMessage = null
+    let toolUseMessage: Message | null = null
 
     // Find the tool use but make sure there's not also a result
     for (const message of messages.values()) {

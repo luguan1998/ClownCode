@@ -12,12 +12,6 @@ import {
 } from './services/compact/autoCompact.js'
 import { buildPostCompactMessages } from './services/compact/compact.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
-const reactiveCompact = feature('REACTIVE_COMPACT')
-  ? (require('./services/compact/reactiveCompact.js') as typeof import('./services/compact/reactiveCompact.js'))
-  : null
-const contextCollapse = feature('CONTEXT_COLLAPSE')
-  ? (require('./services/contextCollapse/index.js') as typeof import('./services/contextCollapse/index.js'))
-  : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   logEvent,
@@ -62,12 +56,6 @@ import {
   startRelevantMemoryPrefetch,
 } from './utils/attachments.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
-const skillPrefetch = feature('EXPERIMENTAL_SKILL_SEARCH')
-  ? (require('./services/skillSearch/prefetch.js') as typeof import('./services/skillSearch/prefetch.js'))
-  : null
-const jobClassifier = feature('TEMPLATES')
-  ? (require('./jobs/classifier.js') as typeof import('./jobs/classifier.js'))
-  : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 import {
   remove as removeFromQueue,
@@ -102,7 +90,6 @@ import { buildQueryConfig } from './query/config.js'
 import { getGlobalConfig } from './utils/config.js'
 import { productionDeps, type QueryDeps } from './query/deps.js'
 import type { Terminal, Continue } from './query/transitions.js'
-import { feature } from 'bun:bundle'
 import {
   getCurrentTurnTokenBudget,
   getTurnOutputTokens,
@@ -111,12 +98,6 @@ import {
 import { createBudgetTracker, checkTokenBudget } from './query/tokenBudget.js'
 import { count } from './utils/array.js'
 /* eslint-disable @typescript-eslint/no-require-imports */
-const snipModule = feature('HISTORY_SNIP')
-  ? (require('./services/compact/snipCompact.js') as typeof import('./services/compact/snipCompact.js'))
-  : null
-const taskSummaryModule = feature('BG_SESSIONS')
-  ? (require('./utils/taskSummary.js') as typeof import('./utils/taskSummary.js'))
-  : null
 /* eslint-enable @typescript-eslint/no-require-imports */
 
 function* yieldMissingToolResultBlocks(
@@ -255,7 +236,7 @@ async function* queryLoop(
 > {
   // Start a new turn for multi-turn context tracking
   if (
-    feature('MULTI_TURN_CONTEXT') &&
+    false &&
     getGlobalConfig().knowledgeGraphEnabled
   ) {
     const { startNewTurn } = await import('./utils/multiTurnContext.js')
@@ -291,7 +272,7 @@ async function* queryLoop(
     pendingToolUseSummary: undefined,
     transition: undefined,
   }
-  const budgetTracker = feature('TOKEN_BUDGET') ? createBudgetTracker() : null
+  const budgetTracker = true ? createBudgetTracker() : null
 
   // task_budget.remaining tracking across compaction boundaries. Undefined
   // until first compact fires — while context is uncompacted the server can
@@ -342,11 +323,6 @@ async function* queryLoop(
     // nothing in prod). Turn-0 user-input discovery still blocks in
     // userInputAttachments — that's the one signal where there's no prior
     // work to hide under.
-    const pendingSkillPrefetch = skillPrefetch?.startSkillDiscoveryPrefetch(
-      null,
-      messages,
-      toolUseContext,
-    )
 
     yield { type: 'stream_request_start' }
 
@@ -380,7 +356,7 @@ async function* queryLoop(
 
     // Extract facts and update phase from the latest message (user input or tool result)
     if (
-      feature('CONVERSATION_ARC') &&
+      false &&
       getGlobalConfig().knowledgeGraphEnabled &&
       messagesForQuery.length > 0
     ) {
@@ -428,16 +404,6 @@ async function* queryLoop(
     // what snip removed; tokenCountWithEstimation alone can't see it (reads usage
     // from the protected-tail assistant, which survives snip unchanged).
     let snipTokensFreed = 0
-    if (feature('HISTORY_SNIP')) {
-      queryCheckpoint('query_snip_start')
-      const snipResult = snipModule!.snipCompactIfNeeded(messagesForQuery)
-      messagesForQuery = snipResult.messages
-      snipTokensFreed = snipResult.tokensFreed
-      if (snipResult.boundaryMessage) {
-        yield snipResult.boundaryMessage
-      }
-      queryCheckpoint('query_snip_end')
-    }
 
     // Apply microcompact before autocompact
     queryCheckpoint('query_microcompact_start')
@@ -450,7 +416,7 @@ async function* queryLoop(
     // For cached microcompact (cache editing), defer boundary message until after
     // the API response so we can use actual cache_deleted_input_tokens.
     // Gated behind feature() so the string is eliminated from external builds.
-    const pendingCacheEdits = feature('CACHED_MICROCOMPACT')
+    const pendingCacheEdits = true
       ? microcompactResult.compactionInfo?.pendingCacheEdits
       : undefined
     queryCheckpoint('query_microcompact_end')
@@ -467,33 +433,10 @@ async function* queryLoop(
     // Within a turn, the view flows forward via state.messages at the
     // continue site (query.ts:1192), and the next projectView() no-ops
     // because the archived messages are already gone from its input.
-    if (feature('CONTEXT_COLLAPSE') && contextCollapse) {
-      const collapseResult = await contextCollapse.applyCollapsesIfNeeded(
-        messagesForQuery,
-        toolUseContext,
-        querySource,
-      )
-      messagesForQuery = collapseResult.messages
-    }
 
     // arcSummary must be a separate array element; concatenating it into a
     // template string makes [...systemPrompt] spread chars, shredding the prompt.
     let promptWithArc: readonly string[] = systemPrompt
-    if (feature('CONVERSATION_ARC')) {
-      if (getGlobalConfig().knowledgeGraphEnabled) {
-        const lastMessage = messagesForQuery[messagesForQuery.length - 1]
-        const userQueryText =
-          lastMessage?.type === 'user' &&
-          typeof lastMessage.message.content === 'string'
-            ? lastMessage.message.content
-            : ''
-        const { getArcSummary } = await import('./utils/conversationArc.js')
-        const arcSummary = getArcSummary(userQueryText)
-        if (arcSummary) {
-          promptWithArc = [...systemPrompt, arcSummary]
-        }
-      }
-    }
 
     const fullSystemPrompt = asSystemPrompt(
       appendSystemContext(asSystemPrompt(promptWithArc), systemContext),
@@ -659,26 +602,17 @@ async function* queryLoop(
     // API call and starve both recovery paths. The isAutoCompactEnabled()
     // conjunct preserves the user's explicit "no automatic anything"
     // config — if they set DISABLE_AUTO_COMPACT, they get the preempt.
-    let collapseOwnsIt = false
-    if (feature('CONTEXT_COLLAPSE')) {
-      collapseOwnsIt =
-        (contextCollapse?.isContextCollapseEnabled() ?? false) &&
-        isAutoCompactEnabled()
-    }
+    const collapseOwnsIt = false
     // Hoist media-recovery gate once per turn. Withholding (inside the
     // stream loop) and recovery (after) must agree; CACHED_MAY_BE_STALE can
     // flip during the 5-30s stream, and withhold-without-recover would eat
     // the message. PTL doesn't hoist because its withholding is ungated —
     // it predates the experiment and is already the control-arm baseline.
-    const mediaRecoveryEnabled =
-      reactiveCompact?.isReactiveCompactEnabled() ?? false
+    const mediaRecoveryEnabled = false
     if (
       !compactionResult &&
       querySource !== 'compact' &&
       querySource !== 'session_memory' &&
-      !(
-        reactiveCompact?.isReactiveCompactEnabled() && isAutoCompactEnabled()
-      ) &&
       !collapseOwnsIt
     ) {
       const { isAtBlockingLimit } = calculateTokenWarningState(
@@ -874,26 +808,6 @@ async function* queryLoop(
             // tree-shaking constraint), so the collapse check is nested
             // rather than composed.
             let withheld = false
-            if (feature('CONTEXT_COLLAPSE')) {
-              if (
-                contextCollapse?.isWithheldPromptTooLong(
-                  message,
-                  isPromptTooLongMessage,
-                  querySource,
-                )
-              ) {
-                withheld = true
-              }
-            }
-            if (reactiveCompact?.isWithheldPromptTooLong(message)) {
-              withheld = true
-            }
-            if (
-              mediaRecoveryEnabled &&
-              reactiveCompact?.isWithheldMediaSizeError(message)
-            ) {
-              withheld = true
-            }
             if (isWithheldMaxOutputTokens(message)) {
               withheld = true
             }
@@ -944,7 +858,7 @@ async function* queryLoop(
           // token deletion count instead of client-side estimates.
           // Entire block gated behind feature() so the excluded string
           // is eliminated from external builds.
-          if (feature('CACHED_MICROCOMPACT') && pendingCacheEdits) {
+          if (true && pendingCacheEdits) {
             const lastAssistant = assistantMessages.at(-1)
             // The API field is cumulative/sticky across requests, so we
             // subtract the baseline captured before this request to get the delta.
@@ -1104,7 +1018,7 @@ async function* queryLoop(
       // chicago MCP: auto-unhide + lock release on interrupt. Same cleanup
       // as the natural turn-end path in stopHooks.ts. Main thread only —
       // see stopHooks.ts for the subagent-releasing-main's-lock rationale.
-      if (feature('CHICAGO_MCP') && !toolUseContext.agentId) {
+      if (false && !toolUseContext.agentId) {
         try {
           const { cleanupComputerUseAfterTurn } = await import(
             './utils/computerUse/cleanup.js'
@@ -1153,109 +1067,11 @@ async function* queryLoop(
       // lost). If the oversized media is in the preserved tail, the
       // post-compact turn will media-error again; hasAttemptedReactiveCompact
       // prevents a spiral and the error surfaces.
-      const isWithheldMedia =
-        mediaRecoveryEnabled &&
-        reactiveCompact?.isWithheldMediaSizeError(lastMessage)
+      const isWithheldMedia = false
       if (isWithheld413) {
         // First: drain all staged context-collapses. Gated on the PREVIOUS
         // transition not being collapse_drain_retry — if we already drained
         // and the retry still 413'd, fall through to reactive compact.
-        if (
-          feature('CONTEXT_COLLAPSE') &&
-          contextCollapse &&
-          state.transition?.reason !== 'collapse_drain_retry'
-        ) {
-          const drained = contextCollapse.recoverFromOverflow(
-            messagesForQuery,
-            querySource,
-          )
-          if (drained.committed > 0) {
-            const next: State = {
-              messages: drained.messages,
-              toolUseContext,
-              autoCompactTracking: tracking,
-              maxOutputTokensRecoveryCount,
-              hasAttemptedReactiveCompact,
-              maxOutputTokensOverride: undefined,
-              pendingToolUseSummary: undefined,
-              stopHookActive: undefined,
-              turnCount,
-              continuationNudgeCount: state.continuationNudgeCount,
-              transition: {
-                reason: 'collapse_drain_retry',
-                committed: drained.committed,
-              },
-            }
-            state = next
-            continue
-          }
-        }
-      }
-      if ((isWithheld413 || isWithheldMedia) && reactiveCompact) {
-        const compacted = await reactiveCompact.tryReactiveCompact({
-          hasAttempted: hasAttemptedReactiveCompact,
-          querySource,
-          aborted: toolUseContext.abortController.signal.aborted,
-          messages: messagesForQuery,
-          cacheSafeParams: {
-            systemPrompt,
-            userContext,
-            systemContext,
-            toolUseContext,
-            forkContextMessages: messagesForQuery,
-          },
-        })
-
-        if (compacted) {
-          // task_budget: same carryover as the proactive path above.
-          // messagesForQuery still holds the pre-compact array here (the
-          // 413-failed attempt's input).
-          if (params.taskBudget) {
-            const preCompactContext =
-              finalContextTokensFromLastResponse(messagesForQuery)
-            taskBudgetRemaining = Math.max(
-              0,
-              (taskBudgetRemaining ?? params.taskBudget.total) -
-                preCompactContext,
-            )
-          }
-
-          const postCompactMessages = buildPostCompactMessages(compacted)
-          for (const msg of postCompactMessages) {
-            yield msg
-          }
-          const next: State = {
-            messages: postCompactMessages,
-            toolUseContext,
-            autoCompactTracking: undefined,
-            maxOutputTokensRecoveryCount,
-            hasAttemptedReactiveCompact: true,
-            maxOutputTokensOverride: undefined,
-            pendingToolUseSummary: undefined,
-            stopHookActive: undefined,
-            turnCount,
-            continuationNudgeCount: state.continuationNudgeCount,
-            transition: { reason: 'reactive_compact_retry' },
-          }
-          state = next
-          continue
-        }
-
-        // No recovery — surface the withheld error and exit. Do NOT fall
-        // through to stop hooks: the model never produced a valid response,
-        // so hooks have nothing meaningful to evaluate. Running stop hooks
-        // on prompt-too-long creates a death spiral: error → hook blocking
-        // → retry → error → … (the hook injects more tokens each cycle).
-        yield lastMessage
-        void executeStopFailureHooks(lastMessage, toolUseContext)
-        return { reason: isWithheldMedia ? 'image_error' : 'prompt_too_long' }
-      } else if (feature('CONTEXT_COLLAPSE') && isWithheld413) {
-        // reactiveCompact compiled out but contextCollapse withheld and
-        // couldn't recover (staged queue empty/stale). Surface. Same
-        // early-return rationale — don't fall through to stop hooks.
-        yield lastMessage
-        void executeStopFailureHooks(lastMessage, toolUseContext)
-        return { reason: 'prompt_too_long' }
       }
 
       // Check for max_output_tokens and inject recovery message. The error
@@ -1384,7 +1200,7 @@ async function* queryLoop(
         continue
       }
 
-      if (feature('TOKEN_BUDGET')) {
+      if (true) {
         const decision = checkTokenBudget(
           budgetTracker!,
           toolUseContext.agentId,
@@ -1447,9 +1263,9 @@ async function* queryLoop(
       ) {
         const lastAssistant = assistantMessages.at(-1)
         if (lastAssistant?.type === 'assistant') {
-          const lastText = lastAssistant.message.content
-            .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-            .map(b => b.text)
+          const lastText = (lastAssistant.message.content as Array<{ type: string; text?: string }>)
+            .filter(b => b.type === 'text')
+            .map(b => b.text ?? '')
             .join(' ')
             .toLowerCase()
 
@@ -1560,32 +1376,8 @@ async function* queryLoop(
     queryCheckpoint('query_tool_execution_end')
 
     // Track multi-turn context after tool execution
-    if (
-      feature('MULTI_TURN_CONTEXT') &&
-      getGlobalConfig().knowledgeGraphEnabled
-    ) {
-      const { addMessageToTurn, addToolCallToTurn } = await import(
-        './utils/multiTurnContext.js'
-      )
-      addMessageToTurn(assistantMessage)
-      for (const toolUse of toolUseBlocks) {
-        addToolCallToTurn({
-          id: toolUse.id,
-          name: toolUse.name,
-          input: toolUse.input as Record<string, unknown>,
-          timestamp: Date.now(),
-        })
-      }
-    }
 
     // Update conversation arc phase
-    if (
-      feature('CONVERSATION_ARC') &&
-      getGlobalConfig().knowledgeGraphEnabled
-    ) {
-      const { updateArcPhase } = await import('./utils/conversationArc.js')
-      updateArcPhase([assistantMessage])
-    }
 
     // Generate tool use summary after tool batch completes — passed to next recursive call
     let nextPendingToolUseSummary:
@@ -1665,7 +1457,7 @@ async function* queryLoop(
       // chicago MCP: auto-unhide + lock release when aborted mid-tool-call.
       // This is the most likely Ctrl+C path for CU (e.g. slow screenshot).
       // Main thread only — see stopHooks.ts for the subagent rationale.
-      if (feature('CHICAGO_MCP') && !toolUseContext.agentId) {
+      if (false && !toolUseContext.agentId) {
         try {
           const { cleanupComputerUseAfterTurn } = await import(
             './utils/computerUse/cleanup.js'
@@ -1796,15 +1588,6 @@ async function* queryLoop(
     // Inject prefetched skill discovery. collectSkillDiscoveryPrefetch emits
     // hidden_by_main_turn — true when the prefetch resolved before this point
     // (should be >98% at AKI@250ms / Haiku@573ms vs turn durations of 2-30s).
-    if (skillPrefetch && pendingSkillPrefetch) {
-      const skillAttachments =
-        await skillPrefetch.collectSkillDiscoveryPrefetch(pendingSkillPrefetch)
-      for (const att of skillAttachments) {
-        const msg = createAttachmentMessage(att)
-        yield msg
-        toolResults.push(msg)
-      }
-    }
 
     // Remove only commands that were actually consumed as attachments.
     // Prompt and task-notification commands are converted to attachments above.
@@ -1861,24 +1644,6 @@ async function* queryLoop(
     // long-running agent still refreshes what it's working on. Gated
     // only on !agentId so every top-level conversation (REPL, SDK, HFI,
     // remote) generates summaries; subagents/forks don't.
-    if (feature('BG_SESSIONS')) {
-      if (
-        !toolUseContext.agentId &&
-        taskSummaryModule!.shouldGenerateTaskSummary()
-      ) {
-        taskSummaryModule!.maybeGenerateTaskSummary({
-          systemPrompt,
-          userContext,
-          systemContext,
-          toolUseContext,
-          forkContextMessages: [
-            ...messagesForQuery,
-            ...assistantMessages,
-            ...toolResults,
-          ],
-        })
-      }
-    }
 
     // Check if we've reached the max turns limit
     if (maxTurns && nextTurnCount > maxTurns) {
@@ -1887,13 +1652,13 @@ async function* queryLoop(
         maxTurns,
         turnCount: nextTurnCount,
       })
-      return { reason: 'max_turns', turnCount: nextTurnCount }
+      return { reason: 'max_turns' }
     }
 
     queryCheckpoint('query_recursive_call')
 
     if (
-      feature('CONVERSATION_ARC') &&
+      false &&
       getGlobalConfig().knowledgeGraphEnabled
     ) {
       const { finalizeArcTurn } = await import('./utils/conversationArc.js')

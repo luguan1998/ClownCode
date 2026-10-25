@@ -12,10 +12,10 @@ export type NavigableType = (typeof NAVIGABLE_TYPES)[number];
 export type NavigableOf<T extends NavigableType> = Extract<RenderableMessage, {
   type: T;
 }>;
-export type NavigableMessage = RenderableMessage;
+export type NavigableMessage = NavigableOf<NavigableType>;
 
 // Tier-2 blocklist (tier-1 is height > 0) — things that render but aren't actionable.
-export function isNavigableMessage(msg: NavigableMessage): boolean {
+export function isNavigableMessage(msg: RenderableMessage): msg is NavigableMessage {
   switch (msg.type) {
     case 'assistant':
       {
@@ -51,6 +51,8 @@ export function isNavigableMessage(msg: NavigableMessage): boolean {
     case 'grouped_tool_use':
     case 'collapsed_read_search':
       return true;
+    case 'progress':
+      return false;
     case 'attachment':
       switch (msg.attachment.type) {
         case 'queued_command':
@@ -425,7 +427,7 @@ export function copyTextOf(msg: NavigableMessage): string {
     case 'collapsed_read_search':
       return msg.messages.flatMap(m => m.type === 'user' ? [toolResultText(m)] : m.type === 'grouped_tool_use' ? m.results.map(toolResultText) : []).filter(Boolean).join('\n\n');
     case 'system':
-      if ('content' in msg) return msg.content;
+      if ('content' in msg) return msg.content ?? '';
       if ('error' in msg) return String(msg.error);
       return msg.subtype;
     case 'attachment':

@@ -11,7 +11,7 @@ const SECRET_ENV_KEYS = [
 
 export type SecretValueSource = Partial<
   Record<(typeof SECRET_ENV_KEYS)[number], string | undefined>
->
+> & { [key: string]: string | undefined }
 
 export function sanitizeApiKey(
   key: string | null | undefined,

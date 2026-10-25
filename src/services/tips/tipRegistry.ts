@@ -598,8 +598,8 @@ const externalTips: Tip[] = [
       if (config.hasVisitedPasses) {
         return false
       }
-      const { eligible } = checkCachedPassesEligibility()
-      return eligible
+      const eligibility = checkCachedPassesEligibility()
+      return eligibility?.eligible ?? false
     },
   },
   {
