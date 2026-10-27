@@ -6,6 +6,7 @@ dist/
 !.env.example
 .openclaude-profile.json
 reports/
+context-dump/
 GEMINI.md
 CLAUDE.md
 package-lock.json
