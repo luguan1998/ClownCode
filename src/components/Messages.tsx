@@ -33,7 +33,7 @@ import { plural } from '../utils/stringUtils.js';
 import { renderableSearchText } from '../utils/transcriptSearch.js';
 import { Divider } from './design-system/Divider.js';
 import type { UnseenDivider } from './FullscreenLayout.js';
-import { LogoV2 } from './LogoV2/LogoV2.js';
+import { StartupClawd } from './LogoV2/ClawdPixelArt.js';
 import { StreamingMarkdown } from './Markdown.js';
 import { hasContentAfterIndex, MessageRow } from './MessageRow.js';
 import { InVirtualListContext, type MessageActionsNav, MessageActionsSelectedContext, type MessageActionsState } from './messageActions.js';
@@ -59,7 +59,10 @@ const LogoHeader = React.memo(function LogoHeader(t0: { agentDefinitions: AgentD
   } = t0;
   let t1;
   if ($[0] === Symbol.for("react.memo_cache_sentinel")) {
-    t1 = null;
+    // Startup mascot at the top of an empty conversation. Cached: StartupClawd
+    // subscribes to the terminal size itself and swaps to the mini Clawd when
+    // the art does not fit.
+    t1 = <Box paddingLeft={2} marginY={1}><StartupClawd reserved={8} /></Box>;
     $[0] = t1;
   } else {
     t1 = $[0];

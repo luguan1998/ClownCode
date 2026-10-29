@@ -14,6 +14,7 @@ import { renderModelSetting } from '../../utils/model/model.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
 import { AnimatedClawd } from './AnimatedClawd.js';
 import { Clawd } from './Clawd.js';
+import { ClawdPixelArt, CLAWD_ART_WIDTH } from './ClawdPixelArt.js';
 import { GuestPassesUpsell, incrementGuestPassesSeenCount, useShowGuestPassesUpsell } from './GuestPassesUpsell.js';
 import { incrementOverageCreditUpsellSeenCount, OverageCreditUpsell, useShowOverageCreditUpsell } from './OverageCreditUpsell.js';
 export function CondensedLogo() {
@@ -69,7 +70,13 @@ export function CondensedLogo() {
     t3 = $[6];
   }
   useEffect(t2, t3);
-  const textWidth = Math.max(columns - 15, 20);
+  // The pixel-art Clawd (37 cols) sits left of the text column when the
+  // terminal can afford it: art + gap + paddingX(2*2) + border = 45 cols, plus
+  // at least 26 for the text column ("Open terminal for any LLM" is 25 — any
+  // narrower and Yoga squeezes the art and the rows wrap). Below 71 cols the
+  // banner keeps the mini Clawd on one line.
+  const showPixelClawd = columns >= CLAWD_ART_WIDTH + 34;
+  const textWidth = Math.max(columns - (showPixelClawd ? 45 : 15), 20);
   const truncatedVersion = truncate(version, Math.max(textWidth - 13, 6));
   const effortSuffix = getEffortSuffix(model, effortValue);
   const {
@@ -79,13 +86,8 @@ export function CondensedLogo() {
   } = formatModelAndBilling(modelDisplayName + effortSuffix, billingType, textWidth);
   const cwdAvailableWidth = agentName ? textWidth - 1 - stringWidth(agentName) - 3 : textWidth;
   const truncatedCwd = truncatePath(cwd, Math.max(cwdAvailableWidth, 10));
-  let t4;
-  if ($[7] === Symbol.for("react.memo_cache_sentinel")) {
-    t4 = isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />;
-    $[7] = t4;
-  } else {
-    t4 = $[7];
-  }
+  // Not memoized: it depends on `columns` (recomputed on every resize).
+  const t4 = showPixelClawd ? <ClawdPixelArt /> : isFullscreenEnvEnabled() ? <AnimatedClawd /> : <Clawd />;
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
     t5 = <Text bold={true}>OPEN CLAUDE</Text>;
@@ -139,18 +141,9 @@ export function CondensedLogo() {
   } else {
     t11 = $[22];
   }
-  let t12;
-  if ($[23] !== t10 || $[24] !== t11 || $[25] !== t6 || $[26] !== t7 || $[27] !== t9) {
-    t12 = <OffscreenFreeze><Box borderStyle="round" borderColor="inactive" paddingX={2} paddingY={0} flexDirection="row" gap={2} alignItems="center"><Box flexDirection="column" alignItems="center"><Text color="inactive">•</Text>{t4}<Text color="inactive">•</Text></Box><Box flexDirection="column"><Text bold={true}>OPEN CLAUDE</Text><Text dimColor={true}>{t6a}</Text><Box marginTop={1}>{t6}</Box>{t7}{t9}{t10}{t11}</Box></Box></OffscreenFreeze>;
-    $[23] = t10;
-    $[24] = t11;
-    $[25] = t6;
-    $[26] = t7;
-    $[27] = t9;
-    $[28] = t12;
-  } else {
-    t12 = $[28];
-  }
+  // Not memoized: t4 changes with the terminal width, and the bullets only
+  // frame the mini Clawd — the pixel art carries the block on its own.
+  const t12 = <OffscreenFreeze><Box borderStyle="round" borderColor="inactive" paddingX={2} paddingY={0} flexDirection="row" gap={2} alignItems="center"><Box flexDirection="column" alignItems="center">{!showPixelClawd && <Text color="inactive">•</Text>}{t4}{!showPixelClawd && <Text color="inactive">•</Text>}</Box><Box flexDirection="column"><Text bold={true}>OPEN CLAUDE</Text><Text dimColor={true}>{t6a}</Text><Box marginTop={1}>{t6}</Box>{t7}{t9}{t10}{t11}</Box></Box></OffscreenFreeze>;
   return t12;
 }
 function _temp2(s_0) {
