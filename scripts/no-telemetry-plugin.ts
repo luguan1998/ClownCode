@@ -51,7 +51,6 @@ let _flags = undefined;
 //   { "tengu_some_flag": true }
 const _openBuildDefaults = {
   'tengu_sedge_lantern': true,  // AWAY_SUMMARY — "while you were away" recap (upstream: false)
-  'tengu_hive_evidence': true,  // VERIFICATION_AGENT — read-only test/verification agent (upstream: false)
   'tengu_passport_quail': true, // EXTRACT_MEMORIES — enable memory extraction (upstream: false)
   'tengu_coral_fern': true,     // EXTRACT_MEMORIES — enable memory search in past context (upstream: false)
   'tengu_moth_copse': true,     // Recall-surfaced memories: MEMORY.md leaves the system prompt and
@@ -81,7 +80,7 @@ const _openBuildDefaults = {
  *   tengu_agent_list_attach        = true       Attach file context to agent list
  *   tengu_auto_background_agents   = false      Auto-spawn background agents
  *   tengu_slim_subagent_claudemd   = true       Lighter ClaudeMD for subagents
- *   tengu_hive_evidence            = false      Verification agent / evidence tracking (4 call sites)
+ *   tengu_hive_evidence            = false      Verification agent / evidence tracking (removed from this build)
  *   tengu_ultraplan_model          = model cfg  ULTRAPLAN model selection (dynamic config)
  *
  * ── Memory & context ──────────────────────────────────────────────────
