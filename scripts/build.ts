@@ -265,7 +265,22 @@ export default stub;
 export const __stub = true;
 // Named exports for all known imports
 export const SandboxViolationStore = null;
-export const SandboxManager = new Proxy({}, { get: () => noop });
+// OpenClaude: keep the catch-all no-op Proxy — sandbox-adapter forwards ~14
+// BaseSandboxManager methods, so a plain object would leave them undefined
+// (TypeError at startup). Only the pure transformer is overridden:
+// annotateStderrWithSandboxFailures must be identity ((_, stderr) => stderr),
+// because BashTool replaces result.stdout with its return value — the old
+// noop () => null silently swallowed ALL failing-command output (only
+// "Exit code N" reached the model).
+const sandboxHandler = {
+  get(_, prop) {
+    if (prop === 'annotateStderrWithSandboxFailures') return (_command, stderr) => stderr;
+    if (prop === 'getSandboxViolationStore') return () => ({ getViolations: () => [], getViolationsForCommand: () => [] });
+    if (prop === 'getLinuxGlobPatternWarnings') return () => [];
+    return noop;
+  }
+};
+export const SandboxManager = new Proxy({}, sandboxHandler);
 export const SandboxRuntimeConfigSchema = { parse: () => ({}) };
 export const BROWSER_TOOLS = [];
 export const getMcpConfigForManifest = noop;
