@@ -1,0 +1,42 @@
+{
+  "seq": 11,
+  "time": 1794073717102,
+  "source": {
+    "kind": "skill-catalog",
+    "form": "catalog",
+    "entries": [
+      {
+        "name": "diagnose-windows-sandbox-acl",
+        "description": "Use on Windows for unexpected DSH sandbox access denials: workspace writes or listing fail, or an ordinarily readable path cannot be read. One bundled command inspects the path and every ancestor and repairs the ACL problems it proves in that same run. Expected confinement denials need no ACL repair."
+      },
+      {
+        "name": "office",
+        "description": "Create, edit, inspect, or convert Office documents, spreadsheets, presentations, and PDFs. Load to choose the relevant workflow."
+      },
+      {
+        "name": "office-docx",
+        "description": "Create, read, edit, and validate Word documents (.docx)."
+      },
+      {
+        "name": "office-export-pdf",
+        "description": "Convert an Office document to a requested PDF with LibreOffice Kit."
+      },
+      {
+        "name": "office-pptx",
+        "description": "Create, read, edit, and validate PowerPoint presentations (.pptx)."
+      },
+      {
+        "name": "office-recalculate",
+        "description": "Refresh spreadsheet formula caches and verify calculated values with LibreOffice Kit."
+      },
+      {
+        "name": "office-render",
+        "description": "Render requested document images or inspect visual layout with LibreOffice Kit."
+      },
+      {
+        "name": "office-xlsx",
+        "description": "Read, create, edit, and validate Excel workbooks, data, and formulas (.xlsx)."
+      }
+    ]
+  }
+}

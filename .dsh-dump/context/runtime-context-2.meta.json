@@ -1,0 +1,34 @@
+{
+  "seq": 58,
+  "time": 1794073747499,
+  "source": {
+    "kind": "runtime-context",
+    "form": "snapshot",
+    "sections": [
+      {
+        "name": "working-directory:current",
+        "text": "Current working directory: \"E:\\\\ai\\\\claudeui\"."
+      },
+      {
+        "name": "sandbox:policy",
+        "text": "Current DSH file policy: danger-full-access. The DSH file sandbox does not restrict file modifications by available operations."
+      },
+      {
+        "name": "approval:policy",
+        "text": "Approval prompts are disabled in this session: actions that require approval are rejected automatically — do not request sandbox escalation (do not set `sandbox_permissions`)."
+      },
+      {
+        "name": "team:identity",
+        "text": "You are the Team Lead named \"lead\".\nUse list_agents({}) to find your teammates and their names.\nTo message another teammate, use send_message({ target: \"<teammate name>\", message: \"...\" })."
+      },
+      {
+        "name": "harness:source",
+        "text": "Current DeepSeek Harness implementation checkout: \"E:\\\\ai\\\\dsharness\\\\resources\\\\app.asar\\\\dsh\\\\\"."
+      },
+      {
+        "name": "app:web-surface",
+        "text": "Current DeepSeek Harness Web GUI URL: \"http://127.0.0.1:52077\"."
+      }
+    ]
+  }
+}

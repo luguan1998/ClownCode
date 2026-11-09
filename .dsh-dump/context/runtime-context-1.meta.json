@@ -1,0 +1,34 @@
+{
+  "seq": 10,
+  "time": 1794073717102,
+  "source": {
+    "kind": "runtime-context",
+    "form": "snapshot",
+    "sections": [
+      {
+        "name": "working-directory:current",
+        "text": "Current working directory: \"E:\\\\ai\\\\claudeui\"."
+      },
+      {
+        "name": "sandbox:policy",
+        "text": "Current DSH file policy: workspace-write. Any available operation enforced by the DSH file sandbox may modify files under the session workspace: \"E:\\\\ai\\\\claudeui\". Some platform temporary areas may also be writable."
+      },
+      {
+        "name": "approval:policy",
+        "text": "Approval prompts are enabled in this session: operations that require approval may ask through the configured answerers; without an available answerer, the request fails closed."
+      },
+      {
+        "name": "team:identity",
+        "text": "You are the Team Lead named \"lead\".\nUse list_agents({}) to find your teammates and their names.\nTo message another teammate, use send_message({ target: \"<teammate name>\", message: \"...\" })."
+      },
+      {
+        "name": "harness:source",
+        "text": "Current DeepSeek Harness implementation checkout: \"E:\\\\ai\\\\dsharness\\\\resources\\\\app.asar\\\\dsh\\\\\"."
+      },
+      {
+        "name": "app:web-surface",
+        "text": "Current DeepSeek Harness Web GUI URL: \"http://127.0.0.1:52077\"."
+      }
+    ]
+  }
+}

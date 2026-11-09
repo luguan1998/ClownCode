@@ -1,0 +1,1 @@
+The user changed the approval policy from "ask the user for approval" to "never ask the user for approval".

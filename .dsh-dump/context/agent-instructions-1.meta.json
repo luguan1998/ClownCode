@@ -1,0 +1,18 @@
+{
+  "seq": 9,
+  "time": 1794073717101,
+  "source": {
+    "kind": "agent-instructions",
+    "form": "instructions",
+    "baseline": true,
+    "baselineIdentity": "{\"projectRoot\":\"\",\"projectRootMarkers\":[\".git\"],\"maxBytes\":65536,\"maxSourceBytes\":1048576,\"instructionFileCandidates\":[\"AGENTS.md\",\"CLAUDE.md\"],\"localInstructionFileCandidates\":[\"AGENTS.local.md\",\"CLAUDE.local.md\"]}",
+    "changes": [
+      {
+        "action": "set",
+        "scope": ".\u0000CLAUDE.md",
+        "path": "CLAUDE.md",
+        "digest": "7db0b5a534cc8a46873d7edbe0ee04255cc9e10b"
+      }
+    ]
+  }
+}

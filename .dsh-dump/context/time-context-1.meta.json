@@ -1,0 +1,14 @@
+{
+  "seq": 12,
+  "time": 1794073717102,
+  "source": {
+    "kind": "time-context",
+    "form": "snapshot",
+    "sections": [
+      {
+        "name": "time-context",
+        "text": "Time sampled while preparing turn 1, step 1: 2026-11-08T01:48:37+08:00[Asia/Shanghai]\nBrowser time zone for this request: Asia/Shanghai. Interpret otherwise-unqualified dates and times in this zone.\nElapsed since the preceding model-visible message: unavailable."
+      }
+    ]
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "generatedAt": "2026-11-07T17:52:42.625Z",
+  "session": {
+    "id": "session-043b1571-8bce-4faf-b008-4dce54cde648",
+    "cwd": "E:\\ai\\claudeui",
+    "agentPreset": "standard",
+    "createdAt": 1794073692142,
+    "sourceFile": "C:\\Users\\luguan\\.dsh\\sessions\\--E-ai-claudeui--\\session-043b1571-8bce-4faf-b008-4dce54cde648\\session.v4.jsonl.zstd"
+  },
+  "request": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "reasoningEffort": "high",
+    "maxTokens": 256000,
+    "contextWindow": 1000000,
+    "toolCount": 39
+  },
+  "counts": {
+    "events": 380,
+    "systemMessages": 1,
+    "contextInjections": {
+      "agent-instructions": 1,
+      "runtime-context": 2,
+      "skill-catalog": 1,
+      "time-context": 1,
+      "user-approval": 1
+    }
+  },
+  "files": [
+    {
+      "name": "context",
+      "directory": true
+    },
+    {
+      "name": "dump-dsh-session.mjs",
+      "bytes": 9153,
+      "sha256": "9262e889eadb5511c1b8bbd53ca1c5b6217060bd6678353b1b4c8773ab7fe9d0"
+    },
+    {
+      "name": "manifest.json",
+      "bytes": 1786,
+      "sha256": "0f242702c2830da533c3fca8a41085f74368b9c834b9d6b63b868ec79e526ad7"
+    },
+    {
+      "name": "model-input-turn-1.md",
+      "bytes": 26991,
+      "sha256": "43b9e5dd133fe722eb560821b1245d8c6f47d9082980193db0b9abdbe9ca958a"
+    },
+    {
+      "name": "request-header.json",
+      "bytes": 50599,
+      "sha256": "023935f129ab42711e91518f10e95b238be16d63609a6baaa43429f2b1deddb0"
+    },
+    {
+      "name": "session.v4.jsonl",
+      "bytes": 1058995,
+      "sha256": "6afff478b9c9b299c0d986e397b923f9ff3637d173c90b4d1485888bc4db57ba"
+    },
+    {
+      "name": "system-prompt.txt",
+      "bytes": 7832,
+      "sha256": "eccfb3adffca59c67cc991d6835f8fbb900d0aa6fde83e8ebed003509ae038f0"
+    },
+    {
+      "name": "tools-summary.md",
+      "bytes": 10997,
+      "sha256": "2c26ccba4df492e11f5a4dd1e7f220f846986052ee19bc465cee272406114d3d"
+    },
+    {
+      "name": "tools.json",
+      "bytes": 45844,
+      "sha256": "4d0587e31ea3666512b30ae96ed3c46afd09b2fff2347038d51007829df2c4e1"
+    },
+    {
+      "name": "context/agent-instructions-1.meta.json",
+      "bytes": 600,
+      "sha256": "2c57d0b607c569f433c0cad2ccfb88a507c2298de63403366ea0018394fb392a"
+    },
+    {
+      "name": "context/agent-instructions-1.txt",
+      "bytes": 15468,
+      "sha256": "05e6a2dcbeabe8b50886d4593d0cace21cf0b64ac338c14389717fe5c5339a5c"
+    },
+    {
+      "name": "context/runtime-context-1.meta.json",
+      "bytes": 1394,
+      "sha256": "a32357c0699ac7d4ed9194f76eabf3ae7ba78e2101817ed4546f6538bbbc2598"
+    },
+    {
+      "name": "context/runtime-context-1.txt",
+      "bytes": 885,
+      "sha256": "dc9183d19ed96e08c67f5816b5ad43070b7d723907528b12081db86c4a2261f2"
+    },
+    {
+      "name": "context/runtime-context-2.meta.json",
+      "bytes": 1299,
+      "sha256": "468de9ec3d13a9118f2de10a0f409b72fe6e4de7851918b3f68e8222d86cee34"
+    },
+    {
+      "name": "context/runtime-context-2.txt",
+      "bytes": 796,
+      "sha256": "410fc7c7ecabddc3d3c9aea634145ec35916fb1b545a88534b0172ab25f3a85b"
+    },
+    {
+      "name": "context/skill-catalog-1.meta.json",
+      "bytes": 1611,
+      "sha256": "fed9906e322fad914db8930446dc68a37340a9a2be427e374645d95a27b5ffc3"
+    },
+    {
+      "name": "context/skill-catalog-1.txt",
+      "bytes": 1713,
+      "sha256": "c8e9d8c6454507b35c741bea26fb6e6739319a09698a2dea3e0c6c03b7a8c2a6"
+    },
+    {
+      "name": "context/time-context-1.meta.json",
+      "bytes": 466,
+      "sha256": "28bcbe41629a6c561eb1e5c7839d592372cb8f76738f6e3ff73ad7090c4f28f2"
+    },
+    {
+      "name": "context/time-context-1.txt",
+      "bytes": 262,
+      "sha256": "72166e9ef9a1582abfbc032da0c2e54e5d37fad0d5d76ab3400182ca39a4efa6"
+    },
+    {
+      "name": "context/user-approval-1.meta.json",
+      "bytes": 87,
+      "sha256": "a6938e969cf034ea23fbd043d7ea82ff77025c9d4674265f7ff4eea54fb03497"
+    },
+    {
+      "name": "context/user-approval-1.txt",
+      "bytes": 107,
+      "sha256": "c45be136e428f82c80857a72d348f2e0e10113e01c61fddc3446ba1f81cd18f9"
+    }
+  ]
+}
