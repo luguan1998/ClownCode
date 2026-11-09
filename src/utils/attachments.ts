@@ -241,6 +241,15 @@ export const TODO_REMINDER_CONFIG = {
   TURNS_BETWEEN_REMINDERS: 10,
 } as const
 
+/**
+ * Progress reminders ("the task/todo tools haven't been used recently") are
+ * disabled by default in this fork. Set
+ * `OPENCLAUDE_ENABLE_TOOL_REMINDERS=1` to opt back in.
+ */
+export function isProgressRemindersEnabled(): boolean {
+  return isEnvTruthy(process.env.OPENCLAUDE_ENABLE_TOOL_REMINDERS)
+}
+
 export const PLAN_MODE_ATTACHMENT_CONFIG = {
   TURNS_BETWEEN_ATTACHMENTS: 5,
   FULL_REMINDER_EVERY_N_ATTACHMENTS: 5,
@@ -3322,6 +3331,11 @@ async function getTodoReminderAttachments(
   messages: Message[] | undefined,
   toolUseContext: ToolUseContext,
 ): Promise<Attachment[]> {
+  // Off by default; opt in via OPENCLAUDE_ENABLE_TOOL_REMINDERS=1.
+  if (!isProgressRemindersEnabled()) {
+    return []
+  }
+
   // Skip if TodoWrite tool is not available
   if (
     !toolUseContext.options.tools.some(t =>
@@ -3431,6 +3445,11 @@ async function getTaskReminderAttachments(
   messages: Message[] | undefined,
   toolUseContext: ToolUseContext,
 ): Promise<Attachment[]> {
+  // Off by default; opt in via OPENCLAUDE_ENABLE_TOOL_REMINDERS=1.
+  if (!isProgressRemindersEnabled()) {
+    return []
+  }
+
   if (!isTodoV2Enabled()) {
     return []
   }

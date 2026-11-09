@@ -97,6 +97,7 @@ export OPENAI_API_KEY=ollama   # optional for local endpoints
 | `OPENAI_AUTH_HEADER` / `_VALUE` / `OPENAI_AUTH_SCHEME` | No | Custom auth header instead of Bearer |
 | `OPENCLAUDE_DISABLE_CO_AUTHORED_BY` | No | Suppress the default `Co-Authored-By` trailer in generated git commits |
 | `OPENCLAUDE_LOG_TOKEN_USAGE` | No | When truthy (e.g. `verbose`), emits one JSON line on stderr per API request with input/output/cache tokens and the resolved provider. **User-facing debug output** — complements the REPL display controlled by `/config showCacheStats`. Distinct from `CLAUDE_CODE_ENABLE_TOKEN_USAGE_ATTACHMENT`, which is **model-facing** (injects context usage info into the prompt itself). Both can run together. |
+| `OPENCLAUDE_ENABLE_TOOL_REMINDERS` | No | Opt in to periodic progress reminders ("TaskUpdate/TodoWrite hasn't been used recently"). **Off by default** in this fork; set to `1` to restore upstream behavior. |
 
 `ANTHROPIC_MODEL` is accepted as a compatibility fallback. `OPENAI_MODEL` takes priority.
 

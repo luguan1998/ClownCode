@@ -75,11 +75,11 @@ import type {
 import { isAdvisorBlock } from './advisor.js'
 import { isAgentSwarmsEnabled } from './agentSwarmsEnabled.js'
 import { count } from './array.js'
-import { isEnvTruthy } from './envUtils.js'
 import {
   type Attachment,
   type HookAttachment,
   type HookPermissionDecisionAttachment,
+  isProgressRemindersEnabled,
   memoryHeader,
 } from './attachments.js'
 import { quote } from './bash/shellQuote.js'
@@ -3606,7 +3606,8 @@ Read the team config to discover your teammates' names. Check the task list peri
       ])
     }
     case 'todo_reminder': {
-      if (isEnvTruthy(process.env.OPENCLAUDE_DISABLE_TOOL_REMINDERS)) {
+      // Off by default; opt in via OPENCLAUDE_ENABLE_TOOL_REMINDERS=1.
+      if (!isProgressRemindersEnabled()) {
         return []
       }
       const todoItems = attachment.content
@@ -3629,7 +3630,8 @@ Read the team config to discover your teammates' names. Check the task list peri
       if (!isTodoV2Enabled()) {
         return []
       }
-      if (isEnvTruthy(process.env.OPENCLAUDE_DISABLE_TOOL_REMINDERS)) {
+      // Off by default; opt in via OPENCLAUDE_ENABLE_TOOL_REMINDERS=1.
+      if (!isProgressRemindersEnabled()) {
         return []
       }
       const taskItems = attachment.content
