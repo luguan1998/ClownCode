@@ -79,10 +79,7 @@ import {
   DESCRIPTION,
   FILE_READ_TOOL_NAME,
   FILE_UNCHANGED_STUB,
-  LINE_FORMAT_INSTRUCTION,
-  OFFSET_INSTRUCTION_DEFAULT,
-  OFFSET_INSTRUCTION_TARGETED,
-  renderPromptTemplate,
+  getReadToolPrompt,
 } from './prompt.js'
 import {
   getToolUseSummary,
@@ -345,18 +342,7 @@ export const FileReadTool = buildTool({
     return DESCRIPTION
   },
   async prompt() {
-    const limits = getDefaultFileReadingLimits()
-    const maxSizeInstruction = limits.includeMaxSizeInPrompt
-      ? `. Files larger than ${formatFileSize(limits.maxSizeBytes)} will return an error; use offset and limit for larger files`
-      : ''
-    const offsetInstruction = limits.targetedRangeNudge
-      ? OFFSET_INSTRUCTION_TARGETED
-      : OFFSET_INSTRUCTION_DEFAULT
-    return renderPromptTemplate(
-      pickLineFormatInstruction(),
-      maxSizeInstruction,
-      offsetInstruction,
-    )
+    return getReadToolPrompt()
   },
   get inputSchema(): InputSchema {
     return inputSchema()
@@ -716,10 +702,6 @@ export const FileReadTool = buildTool({
     }
   },
 } satisfies ToolDef<InputSchema, Output>)
-
-function pickLineFormatInstruction(): string {
-  return LINE_FORMAT_INSTRUCTION
-}
 
 /** Format file content with line numbers. */
 function formatFileLines(file: { content: string; startLine: number }): string {

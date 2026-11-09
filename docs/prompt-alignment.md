@@ -112,7 +112,7 @@
 | 记忆/压缩/会话总结 | `src/memdir/*`、`src/services/compact/prompt.ts`、`src/services/SessionMemory/prompts.ts` | 独立提示词，不建议一起改 |
 | 输出风格 | `src/constants/outputStyles.ts` | 用户可选的附加段 |
 
-本次只对齐 **主系统提示词**。工具描述的对齐放在第二阶段，因为它才是“工具规则放哪里”的主战场。
+本次对齐 **主系统提示词 + 7 个核心工具**（Bash / Read / Write / Edit / AskUserQuestion / Grep / Glob）。其余工具描述的对齐放在后续阶段。
 
 ## 3. 逐块差异与处理结果
 
@@ -288,6 +288,45 @@ node dist/cli.mjs --dump-system-prompt --model <internal-model>
 6. `LATEST_CLAUDE_MODELS_LINE` 已删除，不改成中性表述。
 7. URL 规则保留在 intro 内。
 
+## 8. 核心工具提示词 / schema 对齐（已落地）
+
+### 8.1 基准来源
+
+主提示词快照（第 19 行）不带工具定义；同一会话第 31 行还有一份完整 `prompt_snapshot`：
+
+| 项 | 值 |
+| --- | --- |
+| 版本 | `2.1.288` |
+| 来源行 | `29f2cf2b-...jsonl` 第 31 行 |
+| 工具数 | 34 |
+| 提取方式 | `attachment.tools[].schema.input_schema` |
+
+### 8.2 结果
+
+| 工具 | 描述 | input schema |
+| --- | --- | --- |
+| Bash | 逐字一致（1,431 字符） | 一致；`dangerouslyDisableSandbox` 按安全策略不向模型暴露 |
+| Read | 逐字一致（790 字符） | 一致 |
+| Write | 逐字一致（240 字符） | 一致 |
+| Edit | 逐字一致（360 字符） | 一致 |
+| AskUserQuestion | 逐字一致（1,786 字符，含 markdown preview 段） | 一致 |
+| Grep | 逐字一致（477 字符） | 一致；补齐 `-o` 参数及 rg 调用 |
+| Glob | 逐字一致（140 字符） | 一致 |
+
+### 8.3 保留的合理化差异
+
+- Bash 的平台说明按 `process.platform` 生成：Windows 用 Git Bash/POSIX sh 文案，其他平台用 POSIX shell 文案；超时默认值/上限仍由 `getDefaultBashTimeoutMs()` / `getMaxBashTimeoutMs()` 动态生成。
+- Bash 在启用 sandbox 时追加 `## Command sandbox`；`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` 时省略 `run_in_background` 说明。
+- Bash 的 `dangerouslyDisableSandbox` 仍只接受内部可信来源，不进入模型可见 schema（防止模型自行越权逃逸 sandbox）。
+- AskUserQuestion 的 preview 段按会话渲染格式拼接；未启用 preview 的 SDK 场景不附加。
+- 已删除 Bash 旧版内联的完整 commit/PR 流程，改为 2.1.288 的 4 条 `# Git` 规则。
+
+### 8.4 保护测试
+
+`src/tools/coreToolAlignment.test.ts` 覆盖 7 个核心工具的关键措辞和 schema 行为，防止后续回退。
+
+尚未对齐：`Agent`、`WebFetch`、`WebSearch`、`NotebookEdit`、`Skill` 等工具描述与 schema。
+
 ## 附录 A：基准与落地的体积对照
 
 | 维度 | Claude Code 2.1.288 | ClownCode 落地后 | 差异 |
@@ -347,4 +386,6 @@ node dist/cli.mjs --dump-system-prompt --model test-internal-model
 | `src/memdir/memdir.ts` / `teamMemPrompts.ts` | Memory 段 |
 | `src/constants/promptIdentity.test.ts` | 身份与模型行测试 |
 | `src/constants/promptAlignment.test.ts` | lean 骨架、section 黑白名单、体积上限测试 |
+| `src/tools/coreToolAlignment.test.ts` | 7 个核心工具提示词与 schema 对齐测试 |
+| `src/tools/*/prompt.ts` | 工具描述；已对齐 Bash / Read / Write / Edit / AskUserQuestion / Grep / Glob |
 | `.dsh-dump/` | DSH 参考 dump，不是本次对齐目标 |
