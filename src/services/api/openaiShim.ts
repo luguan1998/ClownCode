@@ -1290,15 +1290,20 @@ class OpenAIShimMessages {
     params: ShimCreateParams,
     options?: { signal?: AbortSignal; headers?: Record<string, string> },
   ): Promise<Response> {
-    const compressedMessages = compressToolHistory(
-      params.messages as Array<{
-        role: string
-        message?: { role?: string; content?: unknown }
-        content?: unknown
-      }>,
+    type ShimMessages = Array<{
+      role: string
+      message?: { role?: string; content?: unknown }
+      content?: unknown
+    }>
+    // Single source of truth for the message pipeline: both transports
+    // (chat completions below, responses via buildResponsesBody) convert
+    // from here, and the context-overflow self-heal retry swaps it for an
+    // aggressively re-compressed set.
+    let messagesForRequest = compressToolHistory(
+      params.messages as ShimMessages,
       request.resolvedModel,
     )
-    const openaiMessages = convertMessages(compressedMessages, params.system)
+    const openaiMessages = convertMessages(messagesForRequest, params.system)
 
     const body: Record<string, unknown> = {
       model: request.resolvedModel,
@@ -1373,8 +1378,10 @@ class OpenAIShimMessages {
     const buildResponsesBody = (): Record<string, unknown> => {
       const responsesBody: Record<string, unknown> = {
         model: request.resolvedModel,
+        // Read from messagesForRequest (compressed) — previously this read raw
+        // params.messages, so the responses transport never compressed at all.
         input: convertAnthropicMessagesToResponsesInput(
-          params.messages as Array<{
+          messagesForRequest as Array<{
             role?: string
             message?: { role?: string; content?: unknown }
             content?: unknown
@@ -1479,6 +1486,7 @@ class OpenAIShimMessages {
     let requestUrl = buildRequestUrl(activeBaseUrl)
     const attemptedLocalBaseUrls = new Set<string>([activeBaseUrl])
     let didRetryWithoutTools = false
+    let didRetryContextOverflow = false
 
     const promoteNextLocalBaseUrl = (
       reason: 'endpoint_not_found' | 'localhost_resolution_failed',
@@ -1703,6 +1711,39 @@ class OpenAIShimMessages {
           { level: 'warn' },
         )
         continue
+      }
+
+      // Context-overflow self-heal: retry once with aggressive tool-history
+      // compression instead of surfacing the error. The aggressive pass
+      // returns the ORIGINAL reference when it can't shrink anything more
+      // (kill-switch off, nothing compactable, or already fully stubbed) —
+      // the reference comparison skips the wasted round trip in that case.
+      if (
+        !didRetryContextOverflow &&
+        failure.category === 'context_overflow'
+      ) {
+        const aggressiveMessages = compressToolHistory(
+          params.messages as ShimMessages,
+          request.resolvedModel,
+          { aggressive: true },
+        )
+        if (aggressiveMessages !== messagesForRequest) {
+          didRetryContextOverflow = true
+          messagesForRequest = aggressiveMessages
+          body.messages = convertMessages(aggressiveMessages, params.system)
+          refreshSerializedBody()
+          // Overflow retries must not consume an attempt slot: remote
+          // endpoints get maxAttempts=1 (no local base-URL promotion), so a
+          // plain continue would exhaust the loop and mask the real overflow
+          // error with the generic 500 fallback below.
+          attempt -= 1
+
+          logForDebugging(
+            `[OpenAIShim] self-heal retry reason=context_overflow mode=aggressive_compression method=POST url=${redactUrlForDiagnostics(requestUrl)} model=${request.resolvedModel}`,
+            { level: 'warn' },
+          )
+          continue
+        }
       }
 
       let errorResponse: object | undefined

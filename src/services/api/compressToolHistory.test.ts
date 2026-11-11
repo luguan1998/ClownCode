@@ -151,21 +151,54 @@ test('recent tier: tool_result content untouched', () => {
   }
 })
 
-test('mid tier: long content truncated to MID_MAX_CHARS with marker', () => {
+test('mid tier: long content truncated to head+tail with middle marker', () => {
   // 100k → recent=5, mid=10. 10 exchanges: 5 recent + 5 mid (none old).
   const messages = buildConversation(10, 5_000)
   const result = compressToolHistory(messages, 'gpt-4o')
   const resultMsgs = getResultMessages(result)
 
-  // First 5 are mid tier — should be truncated to ~2000 chars + marker
+  // First 5 are mid tier — head 1500 + marker + tail 500
   for (let i = 0; i < 5; i++) {
     const text = getResultText(resultMsgs[i])
-    expect(text).toContain('[…truncated')
+    expect(text).toContain('[…middle pruned,')
     expect(text).toContain('chars from tool history]')
-    // Should be roughly 2000 chars + marker (under 2200)
+    const omitted = 5_000 - 1_500 - 500
+    expect(text).toContain(`[…middle pruned, ${omitted} chars from tool history]`)
+    // Head preserved: starts with 1500 'x' chars
+    expect(text.startsWith('x'.repeat(1_500))).toBe(true)
+    // Tail preserved: ends with 500 'x' chars
+    expect(text.endsWith('x'.repeat(500))).toBe(true)
+    // Total budget: head + marker + tail ≈ 2k + marker overhead
     expect(text.length).toBeLessThan(2_200)
     expect(text.length).toBeGreaterThan(2_000)
   }
+})
+
+test('mid tier: tail of realistic content survives (exit code line at end)', () => {
+  // The reason head+tail exists: command output puts the summary at the END.
+  const tailLine = 'Exit code 1. 3 files failed lint.'
+  const text = bigText(5_000) + '\n' + tailLine
+  const messages: Msg[] = [{ role: 'user', content: 'start' }]
+  for (let i = 0; i < 10; i++) {
+    messages.push({
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: `toolu_${i}`, name: 'Bash', input: { command: 'ls' } }],
+    })
+    messages.push({
+      role: 'user',
+      content: [
+        {
+          type: 'tool_result',
+          tool_use_id: `toolu_${i}`,
+          content: i === 4 ? text : bigText(100), // only #4 oversized
+        },
+      ],
+    })
+  }
+  const result = compressToolHistory(messages, 'gpt-4o')
+  const resultMsgs = getResultMessages(result)
+  // Mid tier keeps the trailing line verbatim in the 500-char tail
+  expect(getResultText(resultMsgs[4]).endsWith(tailLine)).toBe(true)
 })
 
 test('mid tier: short content (< MID_MAX_CHARS) untouched', () => {
@@ -364,7 +397,7 @@ test('tier boundaries: 6 exchanges → 1 mid + 5 recent (recent=5)', () => {
   const resultMsgs = getResultMessages(result)
 
   // Oldest: mid (truncated)
-  expect(getResultText(resultMsgs[0])).toContain('[…truncated')
+  expect(getResultText(resultMsgs[0])).toContain('[…middle pruned')
   // Last 5: untouched
   for (let i = 1; i < 6; i++) {
     expect(getResultText(resultMsgs[i]).length).toBe(5_000)
@@ -380,7 +413,7 @@ test('tier boundaries: 16 exchanges → 1 old + 10 mid + 5 recent', () => {
   expect(getResultText(resultMsgs[0])).toMatch(/^\[Read .*chars omitted\]$/)
   // Next 10: mid (truncated)
   for (let i = 1; i < 11; i++) {
-    expect(getResultText(resultMsgs[i])).toContain('[…truncated')
+    expect(getResultText(resultMsgs[i])).toContain('[…middle pruned')
   }
   // Last 5: untouched
   for (let i = 11; i < 16; i++) {
@@ -429,7 +462,7 @@ test('is_error flag preserved in mid tier', () => {
   const block = getResultBlock(resultMsgs[0]) as { is_error?: boolean; content: unknown }
 
   expect(block.is_error).toBe(true)
-  expect(getResultText(resultMsgs[0])).toContain('[…truncated')
+  expect(getResultText(resultMsgs[0])).toContain('[…middle pruned')
 })
 
 test('is_error flag preserved in old tier (stub)', () => {
@@ -487,7 +520,7 @@ test('non-compactable tool (e.g. Task/Agent) is NEVER compressed', () => {
   // First tool_result is for Task (non-compactable) → must remain full
   expect(getResultText(resultMsgs[0]).length).toBe(5_000)
   expect(getResultText(resultMsgs[0])).not.toContain('chars omitted')
-  expect(getResultText(resultMsgs[0])).not.toContain('[…truncated')
+  expect(getResultText(resultMsgs[0])).not.toContain('[…middle pruned')
 })
 
 test('mcp__ prefixed tools ARE compactable (matches microCompact behavior)', () => {
@@ -569,4 +602,130 @@ test('extra block attributes (e.g. cache_control) preserved across rewrites', ()
 
   // The custom attribute survived the stub rewrite via ...block spread
   expect(block.cache_control).toEqual(cacheControl)
+})
+
+// ---------- aggressive mode (context-overflow self-heal retry) ----------
+
+test('aggressive mode: tiers shrink to {recent: 2, mid: 3} regardless of window', () => {
+  // 100k window normally → recent=5, mid=10. Aggressive → recent=2, mid=3.
+  // 6 exchanges: normal mode keeps 5 recent + 1 mid; aggressive keeps
+  // 2 recent + 3 mid + 1 old (stub).
+  mockState.effectiveWindow = 100_000
+  const messages = buildConversation(6, 5_000)
+
+  const normal = compressToolHistory(messages, 'gpt-4o')
+  const aggressive = compressToolHistory(messages, 'gpt-4o', { aggressive: true })
+
+  const normalMsgs = getResultMessages(normal)
+  const aggressiveMsgs = getResultMessages(aggressive)
+
+  // Normal: index 0 is mid (truncated), 1-5 recent (full)
+  expect(getResultText(normalMsgs[0])).toContain('[…middle pruned')
+  for (let i = 1; i < 6; i++) {
+    expect(getResultText(normalMsgs[i]).length).toBe(5_000)
+  }
+
+  // Aggressive: indices 0 old (stub), 1-3 mid, 4-5 recent. Recent tier keeps
+  // full content only when within budget; 5000 chars > MID_MAX_CHARS →
+  // truncated by the aggressive recent-tier cap.
+  expect(getResultText(aggressiveMsgs[0])).toMatch(/^\[Read .*chars omitted\]$/)
+  for (let i = 1; i < 4; i++) {
+    expect(getResultText(aggressiveMsgs[i])).toContain('[…middle pruned')
+  }
+  for (let i = 4; i < 6; i++) {
+    expect(getResultText(aggressiveMsgs[i])).toContain('[…middle pruned')
+    expect(getResultText(aggressiveMsgs[i]).length).toBeLessThan(5_000)
+  }
+})
+
+test('aggressive mode: oversized results in the recent tier are truncated', () => {
+  // Normal mode never touches the recent tier. Aggressive mode truncates
+  // oversized (> MID_MAX_CHARS) results there too — this is what guarantees
+  // the retry shrinks strictly more than the first attempt.
+  mockState.effectiveWindow = 100_000
+  const messages = buildConversation(3, 5_000) // 3 exchanges, all recent normally
+
+  const normal = compressToolHistory(messages, 'gpt-4o')
+  expect(normal).toBe(messages) // nothing to do — all recent
+
+  const aggressive = compressToolHistory(messages, 'gpt-4o', { aggressive: true })
+  expect(aggressive).not.toBe(messages) // recent-tier oversized results got truncated
+  const resultMsgs = getResultMessages(aggressive)
+  for (let i = 0; i < 3; i++) {
+    // recent=2: indices 0-1 are recent tier (aggressive truncation), index 2
+    // is also recent (fromEnd = 0, 1 both < 2)... all three are within recent=2? No:
+    // fromEnd for idx 2 = 0, idx 1 = 1, idx 0 = 2 → idx 0 falls in MID window
+    // (fromEnd 2 < recent 2 + mid 3). So idx 0 is mid-truncated, idx 1-2 recent-truncated.
+    expect(getResultText(resultMsgs[i])).toContain('[…middle pruned')
+  }
+})
+
+test('aggressive mode: kill-switch off → returns original reference (no retry)', () => {
+  mockState.enabled = false
+  const messages = buildConversation(6, 5_000)
+  const result = compressToolHistory(messages, 'gpt-4o', { aggressive: true })
+  expect(result).toBe(messages)
+})
+
+test('aggressive mode: nothing compactable → same reference as normal mode', () => {
+  // All tool results are for non-compactable tools → aggressive pass returns
+  // the same reference, so the shim's retry guard skips the round trip.
+  mockState.effectiveWindow = 100_000
+  const messages: Msg[] = [
+    { role: 'user', content: 'start' },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 'task_1', name: 'Task', input: { goal: 'x' } }],
+    },
+    {
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'task_1', content: bigText(5_000) },
+      ],
+    },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 'task_2', name: 'Task', input: { goal: 'y' } }],
+    },
+    {
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'task_2', content: bigText(5_000) },
+      ],
+    },
+    {
+      role: 'assistant',
+      content: [{ type: 'tool_use', id: 'task_3', name: 'Task', input: { goal: 'z' } }],
+    },
+    {
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'task_3', content: bigText(5_000) },
+      ],
+    },
+  ]
+  const normal = compressToolHistory(messages, 'gpt-4o')
+  const aggressive = compressToolHistory(messages, 'gpt-4o', { aggressive: true })
+  expect(normal).toBe(messages)
+  expect(aggressive).toBe(messages)
+})
+
+// ---------- determinism (prefix-cache stability) ----------
+
+test('deterministic: two structurally identical inputs produce equal output', () => {
+  // Prefix cache at OpenAI-compatible endpoints is byte-sensitive. The forked
+  // summarization agent re-derives its request from the same raw history as
+  // the main thread; only strict determinism keeps those two serialized
+  // prefixes identical (cache hit instead of full re-billing).
+  const a = buildConversation(20, 5_000)
+  const b = buildConversation(20, 5_000)
+  expect(a).not.toBe(b)
+
+  const outA = compressToolHistory(a, 'gpt-4o')
+  const outB = compressToolHistory(b, 'gpt-4o')
+  expect(outA).toEqual(outB)
+
+  const aggA = compressToolHistory(a, 'gpt-4o', { aggressive: true })
+  const aggB = compressToolHistory(b, 'gpt-4o', { aggressive: true })
+  expect(aggA).toEqual(aggB)
 })

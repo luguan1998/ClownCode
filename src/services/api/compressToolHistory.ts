@@ -8,6 +8,15 @@
  * getEffectiveContextWindowSize() — same calculation used by auto-compact, so
  * the two systems stay aligned.
  *
+ * With `opts.aggressive` (used only by the shim's context-overflow self-heal
+ * retry): tiers shrink to the smallest bracket and oversized results in the
+ * recent tier are also truncated, so the retry always shrinks strictly more
+ * than the first attempt. Reference-identical output when nothing changes.
+ *
+ * Deterministic: same input → same output bytes. This is what lets the
+ * summarization fork reuse the main thread's request prefix byte-for-byte
+ * (prefix cache hit at OpenAI-compatible endpoints).
+ *
  * Complements (does not replace) microCompact.ts:
  * - microCompact: time/cache-based, runs from query.ts, binary clear/keep,
  *   limited to Claude (cache editing) or idle gaps (time-based).
@@ -25,9 +34,10 @@ import { isCompactableTool } from '../compact/microCompact.js'
 import { TOOL_RESULT_CLEARED_MESSAGE } from '../../utils/toolResultStorage.js'
 import { getGlobalConfig } from '../../utils/config.js'
 
-// Mid-tier truncation budget. 2k chars ≈ 500 tokens, enough to preserve the
-// shape of most tool outputs (file headers, command stderr, top grep hits)
+// Mid-tier total truncation budget. 2k chars ≈ 500 tokens, enough to preserve
+// the shape of most tool outputs (file headers, command stderr, top grep hits)
 // without ballooning context. Bump too high and the tier loses its purpose.
+// Split into head/tail by MID_HEAD_CHARS/MID_TAIL_CHARS below.
 const MID_MAX_CHARS = 2_000
 
 // Stub args budget. JSON.stringify of a typical tool input fits in 200 chars
@@ -115,7 +125,14 @@ function buildStub(
   }
 }
 
-// Mid-tier compression. The trailing marker is load-bearing: without it, the
+// Mid-tier head/tail split of the total budget. Tool outputs carry critical
+// info at BOTH ends — file headers and command echoes up front, exit codes /
+// stderr / grep match counts at the tail. Head-only truncation loses the tail
+// half of that signal.
+const MID_HEAD_CHARS = 1_500
+const MID_TAIL_CHARS = 500
+
+// Mid-tier compression. The middle marker is load-bearing: without it, the
 // model can't distinguish "tool returned 2000 chars" from "tool returned 20k
 // chars that we cut to 2000". Distinguishing those matters for the model's
 // decision to re-invoke the tool.
@@ -125,13 +142,15 @@ function truncateBlock(
 ): ToolResultBlock {
   const text = extractText(block.content)
   if (text.length <= maxChars) return block
-  const omitted = text.length - maxChars
+  const headChars = Math.min(MID_HEAD_CHARS, maxChars - MID_TAIL_CHARS)
+  const tailChars = Math.min(MID_TAIL_CHARS, maxChars - headChars)
+  const omitted = text.length - headChars - tailChars
   return {
     ...block,
     content: [
       {
         type: 'text',
-        text: `${text.slice(0, maxChars)}\n[…truncated ${omitted} chars from tool history]`,
+        text: `${text.slice(0, headChars)}\n[…middle pruned, ${omitted} chars from tool history]\n${text.slice(-tailChars)}`,
       },
     ],
   }
@@ -209,12 +228,19 @@ function shouldCompressBlock(
 export function compressToolHistory<T extends AnyMessage>(
   messages: T[],
   model: string,
+  opts?: { aggressive?: boolean },
 ): T[] {
   // Master kill-switch. Returns the original reference so callers skip a
   // defensive copy when the feature is disabled.
   if (!getGlobalConfig().toolHistoryCompressionEnabled) return messages
 
-  const tiers = getTiers(getEffectiveContextWindowSize(model))
+  const aggressive = opts?.aggressive === true
+  const windowTiers = getTiers(getEffectiveContextWindowSize(model))
+  // Aggressive mode: shrink tiers to the smallest bracket regardless of window
+  // (min semantics — never larger than what the window-derived tiers allow).
+  const tiers = aggressive
+    ? { recent: 2, mid: 3 }
+    : windowTiers
 
   const toolResultIndices = indexToolResultMessages(messages)
   const total = toolResultIndices.length
@@ -231,25 +257,58 @@ export function compressToolHistory<T extends AnyMessage>(
 
   const toolUsesById = indexToolUses(messages)
 
-  return messages.map((msg, i) => {
+  let anyChanged = false
+  const result = messages.map((msg, i) => {
     const pos = positionByIndex.get(i)
     if (pos === undefined) return msg
 
     const fromEnd = total - 1 - pos
-    if (fromEnd < tiers.recent) return msg
+    if (fromEnd < tiers.recent) {
+      // Aggressive mode also caps oversized results inside the recent tier —
+      // the retry must shrink SOMETHING relative to the first attempt, which
+      // kept recent-tier results verbatim.
+      if (
+        !aggressive ||
+        !Array.isArray(getInner(msg).content)
+      ) {
+        return msg
+      }
+      const content = getInner(msg).content as unknown[]
+      let changed = false
+      const newContent = content.map(block => {
+        const b = block as { type?: string }
+        if (b?.type !== 'tool_result') return block
+        const tr = block as ToolResultBlock
+        if (!shouldCompressBlock(tr, toolUsesById)) return block
+        const compressed = truncateBlock(tr, MID_MAX_CHARS)
+        if (compressed !== block) changed = true
+        return compressed
+      })
+      if (changed) anyChanged = true
+      return changed ? rewriteMessage(msg, newContent) : msg
+    }
 
     const inMidWindow = fromEnd < tiers.recent + tiers.mid
     const content = getInner(msg).content as unknown[]
+    let changed = false
     const newContent = content.map(block => {
       const b = block as { type?: string }
       if (b?.type !== 'tool_result') return block
       const tr = block as ToolResultBlock
       if (!shouldCompressBlock(tr, toolUsesById)) return block
-      return inMidWindow
+      const compressed = inMidWindow
         ? truncateBlock(tr, MID_MAX_CHARS)
         : buildStub(tr, toolUsesById)
+      changed = true
+      return compressed
     })
-
-    return rewriteMessage(msg, newContent)
+    // Reference stability: when nothing in this message was compactable (e.g.
+    // all tool_uses are Task/Agent), keep the original message object. The
+    // shim's overflow-retry guard compares references to decide whether a
+    // retry can shrink anything — spurious rewrites would trigger wasted
+    // round trips. Same at the array level below: map always allocates.
+    if (changed) anyChanged = true
+    return changed ? rewriteMessage(msg, newContent) : msg
   })
+  return anyChanged ? result : messages
 }

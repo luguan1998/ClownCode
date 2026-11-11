@@ -77,7 +77,6 @@ import {
 } from '../../utils/sessionStorage.js'
 import { sleep } from '../../utils/sleep.js'
 import { jsonStringify } from '../../utils/slowOperations.js'
-import { asSystemPrompt } from '../../utils/systemPromptType.js'
 import { getTaskOutputPath } from '../../utils/task/diskOutput.js'
 import {
   getTokenUsage,
@@ -1282,9 +1281,15 @@ async function streamCompactSummary({
           ),
           context.options.tools,
         ),
-        systemPrompt: asSystemPrompt([
-          'You are a helpful AI assistant tasked with summarizing conversations.',
-        ]),
+        // OpenClaude: reuse the conversation's real system prompt instead of a
+        // standalone summarizer prompt. The forked-agent path above already
+        // shares the main thread's prefix (system + tools + messages) for KV
+        // cache reuse; this fallback diverged from that prefix at the very
+        // first byte (system prompt), forcing a guaranteed cache miss at
+        // OpenAI-compatible endpoints. The compactPrompt carried by
+        // summaryRequest is self-contained, so output quality doesn't depend
+        // on the summarizer-only system prompt.
+        systemPrompt: cacheSafeParams.systemPrompt,
         thinkingConfig: { type: 'disabled' as const },
         tools,
         signal: context.abortController.signal,

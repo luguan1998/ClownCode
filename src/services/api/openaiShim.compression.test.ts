@@ -166,7 +166,7 @@ test('BUG REPRO: without compression, all 30 tool results are sent at full size'
   expect(toolMessages.length).toBe(30)
   for (const m of toolMessages) {
     expect(m.content.length).toBeGreaterThanOrEqual(5_000)
-    expect(m.content).not.toContain('[…truncated')
+    expect(m.content).not.toContain('[…middle pruned')
     expect(m.content).not.toContain('chars omitted')
   }
 
@@ -199,11 +199,11 @@ test('FIX: with compression on Copilot gpt-4o (tier 5/10/rest), 30 turns shrinks
     expect(toolMessages[i].content).toMatch(/^\[Read args=.*chars omitted\]$/)
   }
   for (let i = 15; i <= 24; i++) {
-    expect(toolMessages[i].content).toContain('[…truncated')
+    expect(toolMessages[i].content).toContain('[…middle pruned')
   }
   for (let i = 25; i <= 29; i++) {
     expect(toolMessages[i].content.length).toBe(5_000)
-    expect(toolMessages[i].content).not.toContain('[…truncated')
+    expect(toolMessages[i].content).not.toContain('[…middle pruned')
     expect(toolMessages[i].content).not.toContain('chars omitted')
   }
 
@@ -226,7 +226,7 @@ test('FIX: gpt-4.1 (1M context) with 25 exchanges keeps all full (recent tier=25
   expect(toolMessages.length).toBe(25)
   for (const m of toolMessages) {
     expect(m.content.length).toBe(5_000)
-    expect(m.content).not.toContain('[…truncated')
+    expect(m.content).not.toContain('[…middle pruned')
     expect(m.content).not.toContain('chars omitted')
   }
 })
@@ -241,7 +241,7 @@ test('FIX: gpt-4.1 (1M context) with 30 exchanges → only first 5 mid-truncated
 
   // 30 total: indices 0..4 mid, indices 5..29 recent
   for (let i = 0; i < 5; i++) {
-    expect(toolMessages[i].content).toContain('[…truncated')
+    expect(toolMessages[i].content).toContain('[…middle pruned')
   }
   for (let i = 5; i < 30; i++) {
     expect(toolMessages[i].content.length).toBe(5_000)
@@ -309,9 +309,232 @@ test('FIX: 32k window (Mistral tier) → recent=3 keeps last 3 only', async () =
     expect(toolMessages[i].content).toContain('chars omitted')
   }
   for (let i = 7; i <= 11; i++) {
-    expect(toolMessages[i].content).toContain('[…truncated')
+    expect(toolMessages[i].content).toContain('[…middle pruned')
   }
   for (let i = 12; i <= 14; i++) {
     expect(toolMessages[i].content.length).toBe(3_000)
   }
+})
+
+// ============================================================================
+// Context-overflow self-heal: retry once with aggressive compression
+// ============================================================================
+
+test('context_overflow: 400 with overflow message triggers ONE aggressive retry, second attempt succeeds', async () => {
+  mockState.enabled = true
+  mockState.effectiveWindow = 100_000 // recent=5, mid=10 normally; aggressive → 2/3
+
+  const original = process.env.OPENAI_API_FORMAT
+  delete process.env.OPENAI_API_FORMAT
+
+  const messages = buildLongConversation(8, 5_000)
+  const bodies: Array<Record<string, unknown>> = []
+  let callCount = 0
+
+  globalThis.fetch = (async (_input, init) => {
+    callCount++
+    const body = JSON.parse(String(init?.body))
+    bodies.push(body)
+    if (callCount === 1) {
+      // OpenAI-style context-length 400
+      return new Response(
+        JSON.stringify({
+          error: {
+            message:
+              "This model's maximum context length is 8192 tokens. However, your messages resulted in 21000 tokens.",
+            type: 'invalid_request_error',
+          },
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
+    return makeFakeResponse()
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  const result = await client.beta.messages.create({
+    model: 'gpt-4o',
+    system: 'system prompt',
+    messages,
+  })
+
+  // Retry happened and succeeded
+  expect(callCount).toBe(2)
+  expect(bodies.length).toBe(2)
+
+  // First body: recent tier = 5 → last 5 results full-size (5000 chars)
+  const firstToolMessages = getToolMessages(bodies[0])
+  for (let i = 3; i < 8; i++) {
+    expect(firstToolMessages[i].content.length).toBe(5_000)
+  }
+
+  // Second body: aggressive tiers (recent=2, mid=3) with recent-tier truncation.
+  // 8 results: indices 0-2 old (stub), 3-5 mid (head+tail), 6-7 recent.
+  // Recent tier in aggressive mode ALSO truncates oversized results (>2k),
+  // so index 7 (5000 chars) is truncated too — everything shrinks vs attempt 1.
+  const secondToolMessages = getToolMessages(bodies[1])
+  expect(secondToolMessages.length).toBe(8)
+  for (let i = 0; i < 3; i++) {
+    expect(secondToolMessages[i].content).toMatch(/chars omitted/)
+  }
+  for (let i = 3; i < 8; i++) {
+    expect(secondToolMessages[i].content).toContain('[…middle pruned')
+    expect(secondToolMessages[i].content.length).toBeLessThan(5_000)
+  }
+
+  // The retry actually shrank the payload
+  expect(JSON.stringify(bodies[1]).length).toBeLessThan(
+    JSON.stringify(bodies[0]).length,
+  )
+
+  if (original !== undefined) process.env.OPENAI_API_FORMAT = original
+  void result
+})
+
+test('context_overflow: no shrink room → error surfaces after single attempt', async () => {
+  mockState.enabled = true
+  mockState.effectiveWindow = 100_000
+
+  const original = process.env.OPENAI_API_FORMAT
+  delete process.env.OPENAI_API_FORMAT
+
+  // Tiny conversation: aggressive pass has nothing to shrink → same reference
+  // as the first pass → the retry guard skips the round trip entirely.
+  const messages = buildLongConversation(1, 100)
+  let callCount = 0
+
+  globalThis.fetch = (async (_input, _init) => {
+    void _input; void _init
+    callCount++
+    return new Response(
+      JSON.stringify({
+        error: {
+          message: 'This model maximum context length is 8192 tokens. Your messages resulted in 9000 tokens.',
+          type: 'invalid_request_error',
+        },
+      }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  await expect(
+    client.beta.messages.create({
+      model: 'gpt-4o',
+      system: 'system prompt',
+      messages,
+    }),
+  ).rejects.toThrow()
+
+  expect(callCount).toBe(1)
+
+  if (original !== undefined) process.env.OPENAI_API_FORMAT = original
+})
+
+test('context_overflow: overflow retry does not loop — only once even if second also overflows', async () => {
+  mockState.enabled = true
+  mockState.effectiveWindow = 100_000
+
+  const original = process.env.OPENAI_API_FORMAT
+  delete process.env.OPENAI_API_FORMAT
+
+  const messages = buildLongConversation(8, 5_000)
+  let callCount = 0
+
+  globalThis.fetch = (async (_input, _init) => {
+    void _input; void _init
+    callCount++
+    return new Response(
+      JSON.stringify({
+        error: {
+          message: "This model's maximum context length is 8192 tokens.",
+          type: 'invalid_request_error',
+        },
+      }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  await expect(
+    client.beta.messages.create({
+      model: 'gpt-4o',
+      system: 'system prompt',
+      messages,
+    }),
+  ).rejects.toThrow()
+
+  // First attempt + exactly one aggressive retry, then the error surfaces.
+  expect(callCount).toBe(2)
+
+  if (original !== undefined) process.env.OPENAI_API_FORMAT = original
+})
+
+test('context_overflow: kill-switch off → no retry, error surfaces immediately', async () => {
+  mockState.enabled = false
+  mockState.effectiveWindow = 100_000
+
+  const original = process.env.OPENAI_API_FORMAT
+  delete process.env.OPENAI_API_FORMAT
+
+  const messages = buildLongConversation(8, 5_000)
+  let callCount = 0
+
+  globalThis.fetch = (async (_input, _init) => {
+    void _input; void _init
+    callCount++
+    return new Response(
+      JSON.stringify({
+        error: {
+          message: "This model's maximum context length is 8192 tokens.",
+          type: 'invalid_request_error',
+        },
+      }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } },
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  await expect(
+    client.beta.messages.create({
+      model: 'gpt-4o',
+      system: 'system prompt',
+      messages,
+    }),
+  ).rejects.toThrow()
+
+  expect(callCount).toBe(1)
+
+  if (original !== undefined) process.env.OPENAI_API_FORMAT = original
+})
+
+test('context_overflow: 413 Payload Too Large also triggers the aggressive retry', async () => {
+  mockState.enabled = true
+  mockState.effectiveWindow = 100_000
+
+  const original = process.env.OPENAI_API_FORMAT
+  delete process.env.OPENAI_API_FORMAT
+
+  const messages = buildLongConversation(8, 5_000)
+  let callCount = 0
+
+  globalThis.fetch = (async (_input, init) => {
+    callCount++
+    if (callCount === 1) {
+      void init
+      return new Response('Payload Too Large', { status: 413 })
+    }
+    return makeFakeResponse()
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  await client.beta.messages.create({
+    model: 'gpt-4o',
+    system: 'system prompt',
+    messages,
+  })
+
+  expect(callCount).toBe(2)
+
+  if (original !== undefined) process.env.OPENAI_API_FORMAT = original
 })
